@@ -33,6 +33,42 @@ async function waitForHealth(url, child) {
   throw new Error("O backend não ficou disponível a tempo.");
 }
 
+async function stopBackend(child) {
+  if (child.exitCode === null) child.kill("SIGTERM");
+  await Promise.race([
+    new Promise((resolve) => child.once("exit", resolve)),
+    new Promise((resolve) => setTimeout(resolve, 2000))
+  ]);
+}
+
+const unconfiguredPort = await availablePort();
+const unconfiguredUrl = "http://127.0.0.1:" + unconfiguredPort;
+const unconfiguredChild = spawn(process.execPath, ["server.mjs"], {
+  cwd: directory,
+  env: {
+    ...process.env,
+    PORT: String(unconfiguredPort),
+    OPENAI_API_KEY: "",
+    FALA_MAIS_APP_TOKEN: "",
+    ALLOWED_ORIGINS: "null," + allowedOrigin
+  },
+  stdio: ["ignore", "pipe", "pipe"]
+});
+
+try {
+  await waitForHealth(unconfiguredUrl, unconfiguredChild);
+  const unconfiguredHealth = await fetch(unconfiguredUrl + "/health");
+  assert.equal(unconfiguredHealth.status, 200);
+  const unconfiguredBody = await unconfiguredHealth.json();
+  assert.equal(unconfiguredBody.ok, true);
+  assert.equal(unconfiguredBody.ready, false);
+
+  const unconfiguredReady = await fetch(unconfiguredUrl + "/ready", { method: "POST" });
+  assert.equal(unconfiguredReady.status, 401);
+} finally {
+  await stopBackend(unconfiguredChild);
+}
+
 const port = await availablePort();
 const baseUrl = "http://127.0.0.1:" + port;
 const child = spawn(process.execPath, ["server.mjs"], {
@@ -92,9 +128,5 @@ try {
   console.error(output);
   throw error;
 } finally {
-  if (child.exitCode === null) child.kill("SIGTERM");
-  await Promise.race([
-    new Promise((resolve) => child.once("exit", resolve)),
-    new Promise((resolve) => setTimeout(resolve, 2000))
-  ]);
+  await stopBackend(child);
 }
