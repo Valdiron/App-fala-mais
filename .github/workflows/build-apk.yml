@@ -25,6 +25,47 @@ jobs:
       - name: Build APK
         working-directory: android
         run: gradle assembleDebug --stacktrace
+      - name: Check APK is ready to test
+        working-directory: android
+        env:
+          APK_PATH: app/build/outputs/apk/debug/app-debug.apk
+        run: |
+          set -euo pipefail
+
+          test -s "$APK_PATH" || {
+            echo "::error::APK is missing or empty: $APK_PATH"
+            exit 1
+          }
+
+          unzip -tq "$APK_PATH" >/dev/null
+
+          unzip -Z1 "$APK_PATH" > apk-entries.txt
+          grep -Fqx 'AndroidManifest.xml' apk-entries.txt || {
+            echo "::error::APK is missing AndroidManifest.xml"
+            exit 1
+          }
+          grep -Fqx 'classes.dex' apk-entries.txt || {
+            echo "::error::APK is missing classes.dex"
+            exit 1
+          }
+
+          size_bytes=$(stat -c '%s' "$APK_PATH")
+          size_human=$(du -h "$APK_PATH" | cut -f1)
+          sha256=$(sha256sum "$APK_PATH" | cut -d' ' -f1)
+
+          {
+            echo "## ✅ APK ready to test"
+            echo
+            echo "- File: `$APK_PATH`"
+            echo "- Size: $size_human ($size_bytes bytes)"
+            echo "- ZIP integrity: passed"
+            echo "- Required APK entries: passed"
+            echo "- SHA-256: `$sha256`"
+            echo "- [Open this workflow run]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID) to download the APK artifact."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "APK ready to test: $APK_PATH ($size_human)"
+          echo "SHA-256: $sha256"
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
