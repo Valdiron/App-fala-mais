@@ -10,6 +10,8 @@ A versão 1.8.1 do APK mantém o design, a capa e o ícone oficiais do Fala+, re
 
 O workflow Build Fala+ APK reconstrói o projeto armazenado em builddata, compila o APK de teste e publica o artefato fala-mais-apk.
 
+A partir da versão 1.8.1, o workflow também valida a assinatura APK v2 e preserva uma chave de atualização estável entre as compilações do branch principal.
+
 O arquivo gerado fica em:
 
 android/app/build/outputs/apk/debug/app-debug.apk
