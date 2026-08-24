@@ -174,6 +174,16 @@ const server = http.createServer(async (request, response) => {
   }
 
   const requestUrl = new URL(request.url || "/", "http://localhost");
+  if (request.method === "GET" && requestUrl.pathname === "/") {
+    send(response, 200, {
+      ok: true,
+      service: "fala-mais-realtime",
+      message: "Backend do Fala+ disponível.",
+      health: "/health"
+    }, cors);
+    return;
+  }
+
   if (request.method === "GET" && requestUrl.pathname === "/health") {
     send(response, 200, {
       ok: true,

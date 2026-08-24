@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: fala-mais-backend
+    runtime: node
+    plan: free
+    region: virginia
+    rootDir: backend
+    buildCommand: npm run check
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeployTrigger: checksPass
+    renderSubdomainPolicy: enabled
+    envVars:
+      - key: NODE_VERSION
+        value: 24.14.1
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: FALA_MAIS_APP_TOKEN
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: null,https://appassets.androidplatform.net,http://localhost:4173
+      - key: OPENAI_REALTIME_MODEL
+        value: gpt-realtime-2.1-mini
+      - key: OPENAI_REALTIME_VOICE
+        value: marin
