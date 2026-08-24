@@ -20,9 +20,15 @@ const allowedOrigins = new Set(
     .filter(Boolean)
 );
 
-if (!openAiApiKey || !appToken) {
-  console.error("Defina OPENAI_API_KEY e FALA_MAIS_APP_TOKEN antes de iniciar o servidor.");
-  process.exit(1);
+const missingConfiguration = [
+  !openAiApiKey ? "OPENAI_API_KEY" : null,
+  !appToken ? "FALA_MAIS_APP_TOKEN" : null
+].filter(Boolean);
+
+if (missingConfiguration.length > 0) {
+  console.warn(
+    "Fala+ iniciou em modo de configuração. Defina: " + missingConfiguration.join(", ") + "."
+  );
 }
 
 const languageNames = {
@@ -123,6 +129,7 @@ function rateLimitExceeded(address) {
 }
 
 function isAuthorized(request) {
+  if (!appToken) return false;
   const suppliedToken = (request.headers.authorization || "").replace(/^Bearer\s+/i, "");
   return timingSafeEqual(appToken, suppliedToken);
 }
@@ -210,6 +217,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && requestUrl.pathname === "/") {
     send(response, 200, {
       ok: true,
+      ready: missingConfiguration.length === 0,
       service: "fala-mais-realtime",
       message: "Backend do Fala+ disponível.",
       health: "/health"
@@ -220,8 +228,9 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && requestUrl.pathname === "/health") {
     send(response, 200, {
       ok: true,
+      ready: missingConfiguration.length === 0,
       service: "fala-mais-realtime",
-      version: "1.1.0",
+      version: "1.1.1",
       model: realtimeModel,
       languages: Object.keys(languageNames).length,
       latencyMode: "fast"
@@ -232,6 +241,13 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "POST" && requestUrl.pathname === "/ready") {
     if (!isAuthorized(request)) {
       send(response, 401, { error: "Token do aplicativo inválido.", code: "APP_TOKEN_INVALID" }, cors);
+      return;
+    }
+    if (missingConfiguration.length > 0) {
+      send(response, 503, {
+        error: "O backend ainda precisa das variáveis secretas do Render.",
+        code: "SERVICE_NOT_CONFIGURED"
+      }, cors);
       return;
     }
     send(response, 200, {
@@ -251,6 +267,14 @@ const server = http.createServer(async (request, response) => {
 
   if (!isAuthorized(request)) {
     send(response, 401, { error: "Token do aplicativo inválido.", code: "APP_TOKEN_INVALID" }, cors);
+    return;
+  }
+
+  if (missingConfiguration.length > 0) {
+    send(response, 503, {
+      error: "O backend ainda precisa das variáveis secretas do Render.",
+      code: "SERVICE_NOT_CONFIGURED"
+    }, cors);
     return;
   }
 
