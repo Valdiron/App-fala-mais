@@ -4,6 +4,8 @@ Aplicativo Android de conversação em idiomas com aulas locais e professor de I
 
 O catálogo inclui 56 idiomas com busca, exemplos de pronúncia e conversação WebRTC. O backend usa por padrão o modelo gpt-realtime-2.1-mini, respostas curtas e detecção rápida do fim da fala.
 
+A versão 1.5.0 do APK traz `https://fala-mais-api.onrender.com` como backend padrão. O usuário ainda informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
+
 ## APK Android
 
 O workflow Build Fala+ APK reconstrói o projeto armazenado em builddata, compila o APK de teste e publica o artefato fala-mais-apk.
