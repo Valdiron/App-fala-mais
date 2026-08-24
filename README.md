@@ -4,7 +4,7 @@ Aplicativo Android de conversação em idiomas com aulas locais e professor de I
 
 O catálogo inclui 56 idiomas com busca, exemplos de pronúncia e conversação WebRTC. O backend usa por padrão o modelo gpt-realtime-2.1-mini, respostas curtas e detecção rápida do fim da fala.
 
-A versão 1.7.0 do APK traz o novo ícone oficial do Fala+, responde a cada pergunta concluída e usa `https://fala-mais-api.onrender.com` como backend padrão. O usuário ainda informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
+A versão 1.8.0 do APK mantém o design, a capa e o ícone oficiais do Fala+, responde automaticamente a cada fala concluída e usa `https://fala-mais-api.onrender.com` como backend padrão. Ela também corrige a permissão do microfone, gravação local, reconexão, mensagens de erro e cache de versões antigas. O usuário informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
 
 ## APK Android
 
@@ -29,14 +29,14 @@ Fluxo:
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Valdiron/App-fala-mais)
 
-O repositório inclui `render.yaml`, que cria um Web Service Node gratuito para teste, com HTTPS, verificação em `/health` e deploy após os testes do GitHub.
+O repositório inclui `render.yaml`, que cria o Web Service Node gratuito `fala-mais-api`, com HTTPS, verificação em `/health`, teste autenticado em `/ready` e deploy automático a cada commit.
 
 Durante a criação do Blueprint, o Render solicitará:
 
 - `OPENAI_API_KEY`: crie uma chave nova e informe somente no Render.
 - `FALA_MAIS_APP_TOKEN`: crie um token longo, guarde-o e use o mesmo valor no aplicativo.
 
-Depois do primeiro deploy, copie a URL `https://...onrender.com`. Ela será adicionada como endereço padrão no APK na próxima etapa.
+Depois do primeiro deploy, confirme que `https://fala-mais-api.onrender.com/health` retorna `"ok": true`. A mesma URL já está configurada como endereço padrão no APK.
 
 ## Configuração
 

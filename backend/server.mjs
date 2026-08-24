@@ -1,11 +1,18 @@
 import crypto from "node:crypto";
 import http from "node:http";
 
-const port = Number.parseInt(process.env.PORT || "3000", 10);
+const configuredPort = Number.parseInt(process.env.PORT || "3000", 10);
+const port = Number.isFinite(configuredPort) && configuredPort >= 0 && configuredPort <= 65535
+  ? configuredPort
+  : 3000;
 const openAiApiKey = (process.env.OPENAI_API_KEY || "").trim();
 const appToken = (process.env.FALA_MAIS_APP_TOKEN || "").trim();
 const realtimeModel = (process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1-mini").trim();
 const realtimeVoice = (process.env.OPENAI_REALTIME_VOICE || "marin").trim();
+const configuredOpenAiTimeoutMs = Number.parseInt(process.env.OPENAI_TIMEOUT_MS || "45000", 10);
+const openAiTimeoutMs = Number.isFinite(configuredOpenAiTimeoutMs)
+  ? Math.min(120000, Math.max(5000, configuredOpenAiTimeoutMs))
+  : 45000;
 const allowedOrigins = new Set(
   (process.env.ALLOWED_ORIGINS || "null,https://appassets.androidplatform.net,http://localhost:4173")
     .split(",")
@@ -81,6 +88,14 @@ const rateLimitWindowMs = 10 * 60 * 1000;
 const maxSessionsPerWindow = 20;
 const sessionAttempts = new Map();
 
+const rateLimitCleanup = setInterval(() => {
+  const cutoff = Date.now() - rateLimitWindowMs;
+  for (const [address, entry] of sessionAttempts) {
+    if (entry.startedAt < cutoff) sessionAttempts.delete(address);
+  }
+}, rateLimitWindowMs);
+rateLimitCleanup.unref();
+
 function timingSafeEqual(expected, actual) {
   const expectedBuffer = Buffer.from(expected);
   const actualBuffer = Buffer.from(actual || "");
@@ -107,6 +122,11 @@ function rateLimitExceeded(address) {
   return current.count > maxSessionsPerWindow;
 }
 
+function isAuthorized(request) {
+  const suppliedToken = (request.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  return timingSafeEqual(appToken, suppliedToken);
+}
+
 function corsHeaders(request) {
   const origin = request.headers.origin;
   if (origin && !allowedOrigins.has("*") && !allowedOrigins.has(origin)) {
@@ -124,6 +144,8 @@ function corsHeaders(request) {
 function send(response, status, body, headers = {}) {
   response.writeHead(status, {
     "Content-Type": "application/json; charset=utf-8",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
     ...headers
   });
   response.end(typeof body === "string" ? body : JSON.stringify(body));
@@ -162,6 +184,15 @@ function sessionInstructions(languageCode) {
   ].join("\n");
 }
 
+function openAiFailureCode(status) {
+  if (status === 401) return "OPENAI_AUTH_ERROR";
+  if (status === 403) return "OPENAI_PERMISSION_ERROR";
+  if (status === 404) return "OPENAI_MODEL_ERROR";
+  if (status === 429) return "OPENAI_RATE_LIMIT";
+  if (status >= 500) return "OPENAI_UNAVAILABLE";
+  return "OPENAI_SESSION_ERROR";
+}
+
 const server = http.createServer(async (request, response) => {
   const cors = corsHeaders(request);
   if (!cors) {
@@ -190,9 +221,25 @@ const server = http.createServer(async (request, response) => {
     send(response, 200, {
       ok: true,
       service: "fala-mais-realtime",
+      version: "1.1.0",
       model: realtimeModel,
       languages: Object.keys(languageNames).length,
       latencyMode: "fast"
+    }, cors);
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/ready") {
+    if (!isAuthorized(request)) {
+      send(response, 401, { error: "Token do aplicativo inválido.", code: "APP_TOKEN_INVALID" }, cors);
+      return;
+    }
+    send(response, 200, {
+      ok: true,
+      service: "fala-mais-realtime",
+      model: realtimeModel,
+      voice: realtimeVoice,
+      languages: Object.keys(languageNames).length
     }, cors);
     return;
   }
@@ -202,9 +249,8 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
-  const suppliedToken = (request.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  if (!timingSafeEqual(appToken, suppliedToken)) {
-    send(response, 401, { error: "Token do aplicativo inválido." }, cors);
+  if (!isAuthorized(request)) {
+    send(response, 401, { error: "Token do aplicativo inválido.", code: "APP_TOKEN_INVALID" }, cors);
     return;
   }
 
@@ -219,6 +265,11 @@ const server = http.createServer(async (request, response) => {
     send(response, 415, { error: "Envie a oferta WebRTC como application/sdp." }, cors);
     return;
   }
+  const contentLength = Number.parseInt(request.headers["content-length"] || "0", 10);
+  if (Number.isFinite(contentLength) && contentLength > 64 * 1024) {
+    send(response, 413, { error: "Oferta WebRTC muito grande." }, cors);
+    return;
+  }
 
   try {
     const sdp = await readBody(request);
@@ -227,8 +278,9 @@ const server = http.createServer(async (request, response) => {
       return;
     }
 
-    const languageCode = String(request.headers["x-study-language"] || "en").toLowerCase();
-    const clientId = String(request.headers["x-fala-mais-client"] || address);
+    const requestedLanguage = String(request.headers["x-study-language"] || "en").toLowerCase();
+    const languageCode = Object.hasOwn(languageNames, requestedLanguage) ? requestedLanguage : "en";
+    const clientId = String(request.headers["x-fala-mais-client"] || address).slice(0, 256);
     const safetyIdentifier = crypto
       .createHash("sha256")
       .update(clientId)
@@ -253,7 +305,7 @@ const server = http.createServer(async (request, response) => {
             threshold: 0.4,
             prefix_padding_ms: 300,
             silence_duration_ms: 400,
-            create_response: false,
+            create_response: true,
             interrupt_response: true
           }
         },
@@ -263,19 +315,38 @@ const server = http.createServer(async (request, response) => {
       }
     }));
 
-    const openAiResponse = await fetch("https://api.openai.com/v1/realtime/calls", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + openAiApiKey,
-        "OpenAI-Safety-Identifier": safetyIdentifier
-      },
-      body: form
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), openAiTimeoutMs);
+    let openAiResponse;
+    try {
+      openAiResponse = await fetch("https://api.openai.com/v1/realtime/calls", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + openAiApiKey,
+          "OpenAI-Safety-Identifier": safetyIdentifier
+        },
+        body: form,
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
     const responseBody = await openAiResponse.text();
 
     if (!openAiResponse.ok) {
       console.error("Falha ao criar sessão Realtime:", openAiResponse.status, responseBody.slice(0, 500));
-      send(response, 502, { error: "Não foi possível iniciar a conversa com a IA." }, cors);
+      send(response, 502, {
+        error: "Não foi possível iniciar a conversa com a IA.",
+        code: openAiFailureCode(openAiResponse.status)
+      }, cors);
+      return;
+    }
+    if (!responseBody.trim().startsWith("v=0")) {
+      console.error("A OpenAI devolveu uma resposta SDP inválida.");
+      send(response, 502, {
+        error: "A resposta da sessão de voz foi inválida.",
+        code: "OPENAI_INVALID_SDP"
+      }, cors);
       return;
     }
 
@@ -289,11 +360,29 @@ const server = http.createServer(async (request, response) => {
       send(response, 413, { error: "Oferta WebRTC muito grande." }, cors);
       return;
     }
+    if (error && error.name === "AbortError") {
+      send(response, 504, {
+        error: "A OpenAI demorou demais para iniciar a conversa.",
+        code: "OPENAI_TIMEOUT"
+      }, cors);
+      return;
+    }
     console.error("Erro interno ao criar sessão:", error instanceof Error ? error.message : error);
     send(response, 500, { error: "Erro interno do servidor." }, cors);
   }
 });
 
 server.listen(port, "0.0.0.0", () => {
-  console.log("Fala+ Realtime disponível na porta " + port + ".");
+  const address = server.address();
+  const activePort = address && typeof address === "object" ? address.port : port;
+  console.log("Fala+ Realtime disponível na porta " + activePort + ".");
 });
+
+function shutdown(signal) {
+  console.log("Encerrando Fala+ Realtime após " + signal + ".");
+  server.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 10000).unref();
+}
+
+process.once("SIGTERM", () => shutdown("SIGTERM"));
+process.once("SIGINT", () => shutdown("SIGINT"));

@@ -1,14 +1,14 @@
 services:
   - type: web
-    name: fala-mais-backend
+    name: fala-mais-api
     runtime: node
     plan: free
     region: virginia
     rootDir: backend
-    buildCommand: npm run check
+    buildCommand: npm ci --ignore-scripts --no-audit --no-fund && npm run check && npm test
     startCommand: npm start
     healthCheckPath: /health
-    autoDeployTrigger: checksPass
+    autoDeployTrigger: commit
     renderSubdomainPolicy: enabled
     envVars:
       - key: NODE_VERSION
@@ -23,3 +23,5 @@ services:
         value: gpt-realtime-2.1-mini
       - key: OPENAI_REALTIME_VOICE
         value: marin
+      - key: OPENAI_TIMEOUT_MS
+        value: 45000

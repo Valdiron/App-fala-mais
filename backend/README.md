@@ -1,6 +1,6 @@
 # Backend de voz ao vivo do Fala+
 
-Este servidor cria sessões seguras da OpenAI Realtime API. A chave principal nunca é enviada ao APK. O VAD confirma cada turno de voz e o aplicativo solicita explicitamente uma resposta para cada pergunta concluída.
+Este servidor cria sessões seguras da OpenAI Realtime API. A chave principal nunca é enviada ao APK. O VAD confirma cada turno de voz e cria automaticamente uma resposta para cada fala concluída.
 
 ## Configuração local
 
@@ -10,6 +10,7 @@ Este servidor cria sessões seguras da OpenAI Realtime API. A chave principal nu
 4. Gere um token longo e aleatório para FALA_MAIS_APP_TOKEN.
 5. Execute npm run dev.
 6. Confirme em http://localhost:3000/health.
+7. Execute npm test para validar saúde, CORS, token e tipos de conteúdo.
 
 Para o APK, hospede esta pasta em um serviço Node com HTTPS. Depois, no perfil do Fala+, informe a URL pública e o mesmo FALA_MAIS_APP_TOKEN.
 
@@ -21,7 +22,8 @@ O arquivo `render.yaml` na raiz do repositório configura automaticamente um Web
 2. Informe uma chave nova em `OPENAI_API_KEY`.
 3. Crie um token longo em `FALA_MAIS_APP_TOKEN` e guarde-o para usar no aplicativo.
 4. Inicie o deploy e aguarde o serviço ficar disponível.
-5. Copie a URL HTTPS exibida pelo Render e confirme que `URL/health` retorna `"ok": true`.
+5. Confirme que `https://fala-mais-api.onrender.com/health` retorna `"ok": true`.
+6. No aplicativo, use o botão Testar servidor para validar também o `FALA_MAIS_APP_TOKEN` pela rota protegida `/ready`.
 
 Os segredos usam `sync: false` e nunca são salvos no GitHub. O plano gratuito pode hibernar quando fica sem uso, então a primeira conversa após um período parado pode demorar mais.
 
@@ -32,4 +34,5 @@ Os segredos usam `sync: false` e nunca são salvos no GitHub. O plano gratuito p
 - ALLOWED_ORIGINS: origens permitidas, separadas por vírgula. O WebView seguro usa https://appassets.androidplatform.net.
 - OPENAI_REALTIME_MODEL: padrão gpt-realtime-2.1-mini para respostas mais rápidas.
 - OPENAI_REALTIME_VOICE: padrão marin.
+- OPENAI_TIMEOUT_MS: tempo máximo para a OpenAI iniciar a sessão, padrão 45000 ms.
 - PORT: porta HTTP, padrão 3000 localmente; o Render fornece essa variável automaticamente.
