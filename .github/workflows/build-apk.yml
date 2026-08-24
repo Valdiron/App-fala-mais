@@ -111,7 +111,7 @@ jobs:
             echo "## APK ready to test"
             echo
             echo "- File: $APK_PATH"
-            echo "- Version: 1.8.0 (9)"
+            echo "- Version: 1.8.1 (10)"
             echo "- Size: $size_human ($size_bytes bytes)"
             echo "- ZIP integrity: passed"
             echo "- Backend tests: passed"
@@ -125,7 +125,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-apk-v1.8.0
+          name: fala-mais-apk-v1.8.1
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
