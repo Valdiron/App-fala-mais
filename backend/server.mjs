@@ -167,6 +167,9 @@ const server = http.createServer(async (request, response) => {
     form.set("session", JSON.stringify({
       type: "realtime",
       model: realtimeModel,
+      reasoning: {
+        effort: "low"
+      },
       instructions: sessionInstructions(languageCode),
       audio: {
         output: {
