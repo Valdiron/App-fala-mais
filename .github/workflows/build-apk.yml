@@ -101,6 +101,32 @@ jobs:
             echo "::error::APK is missing classes.dex"
             exit 1
           }
+
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          test -n "$sdk_root" || {
+            echo "::error::Android SDK root is unavailable"
+            exit 1
+          }
+          apksigner_path=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          aapt_path=$(find "$sdk_root/build-tools" -type f -name aapt -print | sort -V | tail -n 1)
+          test -x "$apksigner_path" || {
+            echo "::error::apksigner was not found"
+            exit 1
+          }
+          test -x "$aapt_path" || {
+            echo "::error::aapt was not found"
+            exit 1
+          }
+          "$apksigner_path" verify --verbose --print-certs "$APK_PATH"
+          badging=$("$aapt_path" dump badging "$APK_PATH")
+          [[ "$badging" == *"versionCode='10'"* ]] || {
+            echo "::error::APK versionCode is not 10"
+            exit 1
+          }
+          [[ "$badging" == *"versionName='1.8.1'"* ]] || {
+            echo "::error::APK versionName is not 1.8.1"
+            exit 1
+          }
           unzip -p "$APK_PATH" assets/app.js | grep -Fq 'https://fala-mais-api.onrender.com'
 
           size_bytes=$(stat -c '%s' "$APK_PATH")
@@ -117,6 +143,8 @@ jobs:
             echo "- Backend tests: passed"
             echo "- Embedded API key scan: passed"
             echo "- Debug signing key cache: enabled"
+            echo "- APK signature verification: passed"
+            echo "- Manifest version 1.8.1 (10): passed"
             echo "- Required APK entries: passed"
             echo "- SHA-256: $sha256"
             echo "- Open this workflow run to download the fala-mais-apk artifact."
