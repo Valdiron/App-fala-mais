@@ -3,7 +3,6 @@ name: Build Fala+ APK
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -58,8 +57,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$HOME/.android" .signing
-          if [[ -f .signing/debug.keystore ]]; then
-            cp .signing/debug.keystore "$HOME/.android/debug.keystore"
+          if [[ ! -s .signing/debug.keystore ]]; then
+            keytool -genkeypair -noprompt \
+              -keystore .signing/debug.keystore \
+              -storepass android \
+              -alias falamaisdebug \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Fala Mais Debug, O=Fala Mais, C=BR"
           fi
 
       - uses: actions/setup-node@v4
@@ -86,18 +93,21 @@ jobs:
 
       - name: Build APK
         working-directory: android
-        run: gradle assembleDebug --stacktrace
+        run: |
+          gradle assembleDebug --stacktrace \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/.signing/debug.keystore" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=falamaisdebug \
+            -Pandroid.injected.signing.key.password=android
 
       - name: Persist stable debug signing key
         shell: bash
         run: |
           set -euo pipefail
-          test -s "$HOME/.android/debug.keystore" || {
-            echo "::error::Gradle did not create the debug signing key"
+          test -s .signing/debug.keystore || {
+            echo "::error::The stable debug signing key is missing"
             exit 1
           }
-          mkdir -p .signing
-          cp "$HOME/.android/debug.keystore" .signing/debug.keystore
 
       - name: Check APK is ready to test
         working-directory: android
