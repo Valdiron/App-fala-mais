@@ -47,10 +47,20 @@ jobs:
           gradle-version: '8.7'
 
       - name: Restore stable debug signing key
+        id: debug-key-cache
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: fala-mais-debug-signing-v1
+          path: .signing/debug.keystore
+          key: fala-mais-debug-signing-v2
+
+      - name: Prepare stable debug signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android" .signing
+          if [[ -f .signing/debug.keystore ]]; then
+            cp .signing/debug.keystore "$HOME/.android/debug.keystore"
+          fi
 
       - uses: actions/setup-node@v4
         with:
@@ -77,6 +87,17 @@ jobs:
       - name: Build APK
         working-directory: android
         run: gradle assembleDebug --stacktrace
+
+      - name: Persist stable debug signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$HOME/.android/debug.keystore" || {
+            echo "::error::Gradle did not create the debug signing key"
+            exit 1
+          }
+          mkdir -p .signing
+          cp "$HOME/.android/debug.keystore" .signing/debug.keystore
 
       - name: Check APK is ready to test
         working-directory: android
