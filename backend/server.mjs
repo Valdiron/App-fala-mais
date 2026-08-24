@@ -151,6 +151,8 @@ function sessionInstructions(languageCode) {
     "Converse sempre no idioma de estudo: " + language + ". Não troque de idioma sem necessidade.",
     "Use português somente para uma correção curta quando isso ajudar o iniciante e repita imediatamente a forma correta no idioma de estudo.",
     "# Resposta rápida",
+    "Responda sempre a cada turno concluído do aluno, principalmente quando ele fizer uma pergunta.",
+    "Nunca deixe uma pergunta sem resposta. Se não entender o áudio, peça para repetir imediatamente.",
     "Responda imediatamente, sem preâmbulos, cumprimentos repetidos ou explicações longas.",
     "Use uma ou duas frases curtas por turno, faça apenas uma pergunta e aguarde o aluno.",
     "Fale com ritmo claro e ágil, sem parecer apressado.",
@@ -243,12 +245,15 @@ const server = http.createServer(async (request, response) => {
       instructions: sessionInstructions(languageCode),
       audio: {
         input: {
+          noise_reduction: {
+            type: "near_field"
+          },
           turn_detection: {
             type: "server_vad",
-            threshold: 0.5,
+            threshold: 0.4,
             prefix_padding_ms: 300,
-            silence_duration_ms: 450,
-            create_response: true,
+            silence_duration_ms: 400,
+            create_response: false,
             interrupt_response: true
           }
         },

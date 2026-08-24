@@ -1,6 +1,6 @@
 # Backend de voz ao vivo do Fala+
 
-Este servidor cria sessões seguras da OpenAI Realtime API. A chave principal nunca é enviada ao APK.
+Este servidor cria sessões seguras da OpenAI Realtime API. A chave principal nunca é enviada ao APK. O VAD confirma cada turno de voz e o aplicativo solicita explicitamente uma resposta para cada pergunta concluída.
 
 ## Configuração local
 
