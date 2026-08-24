@@ -18,6 +18,6 @@ Para o APK, hospede esta pasta em um serviço Node com HTTPS. Depois, no perfil 
 - OPENAI_API_KEY: chave nova da OpenAI, somente no servidor.
 - FALA_MAIS_APP_TOKEN: token separado que autoriza o aplicativo.
 - ALLOWED_ORIGINS: origens permitidas, separadas por vírgula. O WebView seguro usa https://appassets.androidplatform.net.
-- OPENAI_REALTIME_MODEL: padrão gpt-realtime-2.1.
+- OPENAI_REALTIME_MODEL: padrão gpt-realtime-2.1-mini para respostas mais rápidas.
 - OPENAI_REALTIME_VOICE: padrão marin.
 - PORT: porta HTTP, padrão 3000.

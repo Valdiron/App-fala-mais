@@ -2,6 +2,8 @@
 
 Aplicativo Android de conversação em idiomas com aulas locais e professor de IA por voz ao vivo.
 
+O catálogo inclui 56 idiomas com busca, exemplos de pronúncia e conversação WebRTC. O backend usa por padrão o modelo gpt-realtime-2.1-mini, respostas curtas e detecção rápida do fim da fala.
+
 ## APK Android
 
 O workflow Build Fala+ APK reconstrói o projeto armazenado em builddata, compila o APK de teste e publica o artefato fala-mais-apk.

@@ -4,7 +4,7 @@ import http from "node:http";
 const port = Number.parseInt(process.env.PORT || "3000", 10);
 const openAiApiKey = (process.env.OPENAI_API_KEY || "").trim();
 const appToken = (process.env.FALA_MAIS_APP_TOKEN || "").trim();
-const realtimeModel = (process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1").trim();
+const realtimeModel = (process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1-mini").trim();
 const realtimeVoice = (process.env.OPENAI_REALTIME_VOICE || "marin").trim();
 const allowedOrigins = new Set(
   (process.env.ALLOWED_ORIGINS || "null,https://appassets.androidplatform.net,http://localhost:4173")
@@ -19,10 +19,62 @@ if (!openAiApiKey || !appToken) {
 }
 
 const languageNames = {
+  af: "africâner",
+  ar: "árabe",
+  bg: "búlgaro",
+  bn: "bengali",
+  ca: "catalão",
+  cs: "tcheco",
+  da: "dinamarquês",
   de: "alemão",
+  el: "grego",
   en: "inglês",
   es: "espanhol",
-  fr: "francês"
+  et: "estoniano",
+  eu: "basco",
+  fa: "persa",
+  fi: "finlandês",
+  fr: "francês",
+  ga: "irlandês",
+  gl: "galego",
+  gu: "gujarati",
+  he: "hebraico",
+  hi: "hindi",
+  hr: "croata",
+  hu: "húngaro",
+  id: "indonésio",
+  is: "islandês",
+  it: "italiano",
+  ja: "japonês",
+  kn: "kannada",
+  ko: "coreano",
+  lt: "lituano",
+  lv: "letão",
+  ml: "malaiala",
+  mr: "marathi",
+  ms: "malaio",
+  ne: "nepalês",
+  nl: "holandês",
+  no: "norueguês",
+  pa: "punjabi",
+  pl: "polonês",
+  pt: "português brasileiro",
+  ro: "romeno",
+  ru: "russo",
+  sk: "eslovaco",
+  sl: "esloveno",
+  sr: "sérvio",
+  sv: "sueco",
+  sw: "suaíli",
+  ta: "tamil",
+  te: "telugu",
+  th: "tailandês",
+  tl: "tagalo",
+  tr: "turco",
+  uk: "ucraniano",
+  ur: "urdu",
+  vi: "vietnamita",
+  zh: "chinês mandarim"
 };
 
 const rateLimitWindowMs = 10 * 60 * 1000;
@@ -93,13 +145,19 @@ async function readBody(request, maxBytes = 64 * 1024) {
 function sessionInstructions(languageCode) {
   const language = languageNames[languageCode] || languageNames.en;
   return [
+    "# Função",
     "Você é o professor de conversação do aplicativo Fala+.",
-    "Conduza uma conversa curta, acolhedora e natural no idioma de estudo: " + language + ".",
-    "Use frases adequadas para iniciantes, faça uma pergunta por vez e espere o aluno responder.",
-    "Corrija erros com gentileza em português, depois repita a forma correta no idioma de estudo.",
-    "Mantenha cada resposta falada curta, normalmente entre uma e três frases.",
+    "# Idioma",
+    "Converse sempre no idioma de estudo: " + language + ". Não troque de idioma sem necessidade.",
+    "Use português somente para uma correção curta quando isso ajudar o iniciante e repita imediatamente a forma correta no idioma de estudo.",
+    "# Resposta rápida",
+    "Responda imediatamente, sem preâmbulos, cumprimentos repetidos ou explicações longas.",
+    "Use uma ou duas frases curtas por turno, faça apenas uma pergunta e aguarde o aluno.",
+    "Fale com ritmo claro e ágil, sem parecer apressado.",
+    "Se o áudio estiver confuso, peça para repetir em uma frase curta.",
+    "# Segurança",
     "Não peça senhas, chaves de API, dados bancários ou informações pessoais sensíveis."
-  ].join(" ");
+  ].join("\n");
 }
 
 const server = http.createServer(async (request, response) => {
@@ -120,7 +178,9 @@ const server = http.createServer(async (request, response) => {
     send(response, 200, {
       ok: true,
       service: "fala-mais-realtime",
-      model: realtimeModel
+      model: realtimeModel,
+      languages: Object.keys(languageNames).length,
+      latencyMode: "fast"
     }, cors);
     return;
   }
@@ -172,6 +232,16 @@ const server = http.createServer(async (request, response) => {
       },
       instructions: sessionInstructions(languageCode),
       audio: {
+        input: {
+          turn_detection: {
+            type: "server_vad",
+            threshold: 0.5,
+            prefix_padding_ms: 300,
+            silence_duration_ms: 450,
+            create_response: true,
+            interrupt_response: true
+          }
+        },
         output: {
           voice: realtimeVoice
         }
