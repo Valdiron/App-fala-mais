@@ -1,0 +1,240 @@
+name: Build Fala+ AI Assistant Fixed APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-ai-assistant-fixed.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: build-fala-ai-assistant-fixed-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore latest validated Runtime V3 APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base
+          RUN_ID=$(gh run list -R Valdiron/App-fala-mais --workflow build-runtime-v3-fixed.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          test -n "$RUN_ID"
+          gh run download "$RUN_ID" -R Valdiron/App-fala-mais -n fala-mais-runtime-v3-fixed -D /tmp/base
+          APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          unzip -p "$APK" assets/index.html > /tmp/index.html
+          unzip -p "$APK" assets/app_icon.webp > /tmp/app_icon.webp
+          unzip -p "$APK" assets/assistant_robot_transparent.webp > /tmp/assistant_robot_transparent.webp
+
+      - name: Harden AI assistant and offline fallback
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/index.html')
+          s=p.read_text(encoding='utf-8')
+          patch=r'''
+<style id="aiAssistantFixCss">
+.ai-speech-bubble[data-mode="local"]:after{content:" • modo local";color:#94a3b8;font-size:.72em}.ai-speech-bubble[data-mode="ready"]:after{content:" • pronto";color:#22c55e;font-size:.72em}.ai-speech-bubble[data-mode="error"]{border-color:rgba(239,68,68,.45)}
+</style>
+<script id="falaAiAssistantFix">
+(function(){
+  'use strict';
+  const $=id=>document.getElementById(id);
+  let aiRun=0;
+  let pendingTimer=null;
+  let currentSpeech=null;
+
+  function isAiOpen(){return !!$('aiChatScreen')?.classList.contains('active')}
+  function setMode(mode,text){
+    const b=$('aiSpeechBubble');
+    if(!b)return;
+    b.dataset.mode=mode||'ready';
+    if(text)b.textContent=text;
+  }
+  function robot(state){
+    const r=$('robotAvatar');
+    if(!r)return;
+    r.classList.remove('listening','thinking','speaking');
+    if(state)r.classList.add(state);
+  }
+  function cancelPending(){
+    aiRun++;
+    if(pendingTimer){clearTimeout(pendingTimer);pendingTimer=null}
+    try{if(currentSpeech)currentSpeech.cancel?.()}catch(e){}
+    currentSpeech=null;
+    robot('');
+  }
+  function safeAdd(role,text){
+    if(!isAiOpen())return;
+    const box=$('chatBox'); if(!box)return;
+    const d=document.createElement('div');d.className='chat-bubble '+role;d.textContent=String(text||'');box.appendChild(d);box.scrollTop=box.scrollHeight;
+  }
+  function languageBase(){return String(window.currentLang||$('globalLang')?.value||'en-US').split('-')[0].toLowerCase()}
+  function replyFor(text){
+    const raw=String(text||'').trim();
+    const t=raw.toLocaleLowerCase();
+    const base=languageBase();
+    if(!raw)return 'Diga ou escreva uma frase e eu continuo a conversa com você.';
+    if(/\b(olá|ola|oi|hello|hi|hola|bonjour|hallo|ciao)\b/i.test(t)){
+      if(base==='es')return '¡Hola! ¿Cómo estás? Podemos practicar español juntos.';
+      if(base==='fr')return 'Bonjour ! Comment ça va ? Nous pouvons pratiquer le français.';
+      if(base==='de')return 'Hallo! Wie geht es dir? Wir können gemeinsam Deutsch üben.';
+      if(base==='it')return 'Ciao! Come stai? Possiamo esercitarci insieme.';
+      if(base==='ja')return 'こんにちは！元気ですか？一緒に練習しましょう。';
+      if(base==='pt')return 'Olá! Como você está? Podemos praticar juntos.';
+      return 'Hello! How are you? We can practice together.';
+    }
+    if(t.includes('tradu')||t.includes('translate'))return 'Posso ajudar com tradução. Escreva a frase completa e diga para qual idioma você quer traduzir.';
+    if(t.includes('pronún')||t.includes('pronun'))return 'Posso ajudar com pronúncia. Toque no microfone, diga a frase e tente falar devagar e com clareza.';
+    if(t.includes('restaurante')||t.includes('restaurant'))return base==='en'?'Try: “Could I see the menu, please?”':'Vamos praticar restaurante. Uma frase útil em inglês é: “Could I see the menu, please?”';
+    if(t.includes('viagem')||t.includes('travel')||t.includes('airport'))return base==='en'?'Try: “Where is the check-in counter?”':'Vamos praticar viagem. Uma frase útil em inglês é: “Where is the check-in counter?”';
+    if(base==='es')return 'Entendido. Dijiste: “'+raw+'”. Continúa con otra frase y te acompaño.';
+    if(base==='fr')return 'Compris. Vous avez dit : « '+raw+' ». Continuez avec une autre phrase.';
+    if(base==='de')return 'Verstanden. Du hast gesagt: „'+raw+'“. Mach mit einem weiteren Satz weiter.';
+    if(base==='it')return 'Capito. Hai detto: “'+raw+'”. Continua con un’altra frase.';
+    if(base==='ja')return 'わかりました。「'+raw+'」と言いました。もう一文続けてみましょう。';
+    return 'Entendi: “'+raw+'”. Continue com mais uma frase e eu acompanho sua prática.';
+  }
+
+  window.speakAIWithMotion=function(text){
+    const my=++aiRun;
+    setMode('ready',String(text||''));
+    if(!('speechSynthesis' in window)){robot('');return}
+    try{speechSynthesis.cancel()}catch(e){}
+    try{
+      const u=new SpeechSynthesisUtterance(String(text||''));
+      u.lang=window.currentLang||$('globalLang')?.value||'en-US';
+      const voices=speechSynthesis.getVoices?.()||[];
+      const base=String(u.lang).split('-')[0].toLowerCase();
+      u.voice=voices.find(v=>v.lang===u.lang)||voices.find(v=>String(v.lang||'').toLowerCase().startsWith(base))||null;
+      u.onstart=()=>{if(my===aiRun&&isAiOpen())robot('speaking')};
+      const done=()=>{if(my===aiRun)robot('')};u.onend=done;u.onerror=done;
+      speechSynthesis.speak(u);
+    }catch(e){robot('')}
+  };
+
+  window.askAI=function(message){
+    const text=String(message||'').trim(); if(!text)return;
+    const my=++aiRun;
+    safeAdd('user',text);
+    robot('thinking');
+    setMode('local','Pensando...');
+    pendingTimer=setTimeout(()=>{
+      pendingTimer=null;
+      if(my!==aiRun||!isAiOpen())return;
+      const reply=replyFor(text);
+      safeAdd('ai',reply);
+      setMode('local',reply);
+      window.speakAIWithMotion(reply);
+    },180);
+  };
+
+  window.sendTypedMessage=function(){
+    const input=$('chatInput'); if(!input)return;
+    const text=input.value.trim(); if(!text)return;
+    input.value=''; window.askAI(text);
+  };
+
+  const input=$('chatInput');
+  if(input&&!input.dataset.aiFix){input.dataset.aiFix='1';input.addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();window.sendTypedMessage()}})}
+
+  const oldStart=window.startAIChat;
+  window.startAIChat=function(){
+    cancelPending();
+    try{oldStart?.()}catch(e){document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id==='aiChatScreen'))}
+    setMode('ready','Pronto para conversar por voz ou texto.');
+  };
+
+  const oldHome=window.goToHome;
+  window.goToHome=function(){cancelPending();try{return oldHome?.()}catch(e){document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id==='homeScreen'))}};
+
+  window.addEventListener('unhandledrejection',()=>{robot('');setMode('error','O assistente se recuperou de uma falha. Tente novamente.')});
+  window.addEventListener('error',()=>{robot('')});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden)cancelPending()});
+})();
+</script>
+'''
+          s=s.replace('</body>',patch+'</body>',1)
+          p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Validate AI assistant runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'falaAiAssistantFix' /tmp/index.html
+          grep -Fq 'window.askAI=function' /tmp/index.html
+          grep -Fq 'window.sendTypedMessage=function' /tmp/index.html
+          grep -Fq 'modo local' /tmp/index.html
+          node - <<'NODE'
+          const fs=require('fs');const s=fs.readFileSync('/tmp/index.html','utf8');
+          const scripts=[...s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+          scripts.forEach((m,i)=>{try{new Function(m[1])}catch(e){throw new Error(`Script ${i+1}: ${e.message}`)}});
+          const ids=[...s.matchAll(/id="([^"]+)"/g)].map(m=>m[1]);const dup=ids.filter((x,i)=>ids.indexOf(x)!==i);if(dup.length)throw new Error('Duplicate ids: '+[...new Set(dup)].join(','));
+          console.log('AI assistant runtime validated');
+          NODE
+
+      - name: Repack APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/apkdir && mkdir -p /tmp/apkdir/assets
+          cp /tmp/fala-base.apk /tmp/fala-ai-unsigned.apk
+          cp /tmp/index.html /tmp/apkdir/assets/index.html
+          cp /tmp/app_icon.webp /tmp/apkdir/assets/app_icon.webp
+          cp /tmp/assistant_robot_transparent.webp /tmp/apkdir/assets/assistant_robot_transparent.webp
+          cd /tmp/apkdir
+          zip -q -u /tmp/fala-ai-unsigned.apk assets/index.html assets/app_icon.webp assets/assistant_robot_transparent.webp
+          cd /tmp
+          zip -q -d fala-ai-unsigned.apk 'META-INF/*' || true
+
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [[ ! -s .signing/falamais.keystore ]]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fala Mais, O=Fala Mais, C=BR"
+          fi
+
+      - name: Align sign verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          zipalign=$(find "$sdk_root/build-tools" -type f -name zipalign -print | sort -V | tail -n 1)
+          apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          "$zipalign" -f -p 4 /tmp/fala-ai-unsigned.apk /tmp/Fala-Mais-AI-Assistant-Fixed.apk
+          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-AI-Assistant-Fixed.apk
+          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-AI-Assistant-Fixed.apk
+          unzip -tq /tmp/Fala-Mais-AI-Assistant-Fixed.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-AI-Assistant-Fixed.apk assets/index.html | grep -Fq 'falaAiAssistantFix'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-ai-assistant-fixed
+          path: /tmp/Fala-Mais-AI-Assistant-Fixed.apk
+          if-no-files-found: error
+          retention-days: 14
