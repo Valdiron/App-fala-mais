@@ -1,0 +1,136 @@
+name: Build Fala UI Fixed V6
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-ui-fixed-v6.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download compatibility APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base
+          RUN_ID=$(gh run list -R Valdiron/App-fala-mais --workflow build-compatibility-fixed-v4.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          test -n "$RUN_ID"
+          gh run download "$RUN_ID" -R Valdiron/App-fala-mais -n fala-mais-compatibility-fixed-v4 -D /tmp/base
+          APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          unzip -tq /tmp/fala-base.apk >/dev/null
+          unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
+
+      - name: Apply responsive interface fixes
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/index.html')
+          s=p.read_text(encoding='utf-8')
+          patch=r'''<style id="falaUiFixV6">
+          html,body{width:100%;height:100%;overflow:hidden}
+          body{min-height:100svh;min-height:100dvh;align-items:stretch}
+          .app-container{width:100%;max-width:430px;height:100svh;height:100dvh;max-height:none;margin:0 auto;border-radius:0;overflow:hidden;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+          .screen{min-height:0;overflow:hidden}
+          #homeScreen{padding-bottom:calc(104px + env(safe-area-inset-bottom));overscroll-behavior-y:contain}
+          .ref-home{width:100%;max-width:100%;padding-left:16px;padding-right:16px;overflow-x:hidden}
+          .ref-lang{min-width:0}.ref-lang select{min-width:0;max-width:72%;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
+          .hero-card,.hero-copy,.quick-card{min-width:0}.hero-copy p,.quick-card p,.quick-card h3{overflow-wrap:anywhere}
+          .quick-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+          .ref-bottom{left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));height:70px;z-index:40}
+          .nav-item{min-width:44px;min-height:44px}.nav-voice{flex:0 0 auto}
+          .lesson-content{min-height:0;overflow-y:auto;justify-content:flex-start;padding-top:28px;padding-bottom:24px;overscroll-behavior-y:contain}
+          #lessonScreen header,#gameScreen header{flex:0 0 auto;min-height:58px}
+          #lessonScreen footer,#gameScreen footer{flex:0 0 auto;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+          #gameScreen .lesson-content{width:100%;align-items:stretch;text-align:center}
+          #gameContentContainer{justify-content:flex-start}.game-options{width:100%;min-width:0}.game-option{width:100%;min-height:48px;white-space:normal;overflow-wrap:anywhere}
+          .ai-motion-container{height:100%;min-height:0}.ai-stage{flex:0 0 auto;padding-top:12px;padding-bottom:10px}.ai-robot-avatar{width:min(150px,42vw);height:min(125px,34vw)}
+          .chat-box{min-height:0;overflow-y:auto;overscroll-behavior-y:contain;padding-bottom:16px}.chat-bubble{max-width:86%;overflow-wrap:anywhere}
+          #aiChatScreen .ai-motion-container>div:last-child{flex:0 0 auto;padding-bottom:calc(12px + env(safe-area-inset-bottom))!important}
+          .back-btn,.audio-btn,.mic-btn,.action-btn,.hero-action,.quick-card,.game-option,.nav-item,.nav-voice{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+          button:focus-visible,select:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
+          @media(max-width:360px){.ref-home{padding-left:12px;padding-right:12px}.ref-brand img{width:62px;height:62px}.ref-logo-text{font-size:2.05rem}.hero-card{min-height:184px;padding:16px 14px}.hero-copy{width:64%}.hero-art{right:2px;width:39%}.hero-copy h2{font-size:1.2rem}.hero-copy p{font-size:.72rem}.quick-grid{gap:8px}.quick-card{padding:9px;gap:8px}.quick-ico{width:34px;height:34px;flex:0 0 34px}.quick-card h3{font-size:.72rem}.quick-card p{font-size:.59rem}.ref-bottom{left:6px;right:6px}.nav-item{font-size:.58rem}.nav-voice{width:54px;height:54px}}
+          @media(max-width:320px){.hero-copy{width:68%}.hero-art{opacity:.82;width:35%}.quick-grid{grid-template-columns:1fr}.ref-tagline{letter-spacing:.2em}}
+          @media(max-height:700px){.ref-brand{margin-top:0}.ref-brand img{width:58px;height:58px}.ref-logo-text{font-size:2rem}.ref-tagline{margin-bottom:10px}.hero-card{min-height:166px;padding:14px;margin-bottom:10px}.hero-copy h2{font-size:1.12rem}.hero-copy p{font-size:.69rem}.hero-action{padding:9px 14px}.quick-card{min-height:82px}.ai-stage{padding-top:8px}.ai-robot-avatar{width:112px;height:92px}.ai-speech-bubble{min-height:34px;padding:8px 10px}}
+          @media(orientation:landscape) and (max-height:520px){.app-container{max-width:none}.ref-home{padding-top:8px}.ref-brand img{width:48px;height:48px}.ref-logo-text{font-size:1.8rem}.ref-tagline{display:none}.hero-card{min-height:142px}.quick-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.ref-bottom{height:60px}.nav-voice{width:48px;height:48px;margin-top:-10px}.ai-stage{display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;text-align:left}.ai-robot-avatar{width:110px;height:90px}.ai-speech-bubble{margin:0}.chat-box{padding-top:8px}}
+          </style>'''
+          if 'falaUiFixV6' not in s:
+              s=s.replace('</head>',patch+'\n</head>',1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          grep -Fq 'falaUiFixV6' /tmp/index.html
+          grep -Fq 'safe-area-inset-bottom' /tmp/index.html
+          node - <<'NODE'
+          const fs=require('fs');const s=fs.readFileSync('/tmp/index.html','utf8');
+          for(const m of s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)) new Function(m[1]);
+          const ids=[...s.matchAll(/id="([^"]+)"/g)].map(m=>m[1]);
+          const dup=[...new Set(ids.filter((x,i)=>ids.indexOf(x)!==i))];
+          if(dup.length)throw new Error('Duplicate IDs: '+dup.join(','));
+          console.log('UI validation OK');
+          NODE
+
+      - name: Replace HTML
+        run: |
+          set -euo pipefail
+          cp /tmp/fala-base.apk /tmp/fala-unsigned.apk
+          mkdir -p /tmp/update/assets
+          cp /tmp/index.html /tmp/update/assets/index.html
+          cd /tmp/update
+          zip -q -u /tmp/fala-unsigned.apk assets/index.html
+          cd /tmp
+          zip -q -d fala-unsigned.apk 'META-INF/*' || true
+          unzip -tq fala-unsigned.apk >/dev/null
+
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [ ! -s .signing/falamais.keystore ]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Fala Mais, O=Fala Mais, C=BR'
+          fi
+
+      - name: Align sign verify
+        run: |
+          set -euo pipefail
+          SDK=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
+          ZIPALIGN=$(find "$SDK/build-tools" -type f -name zipalign | sort -V | tail -n 1)
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          AAPT=$(find "$SDK/build-tools" -type f -name aapt | sort -V | tail -n 1)
+          test -x "$ZIPALIGN" && test -x "$APKSIGNER" && test -x "$AAPT"
+          "$ZIPALIGN" -f -p 4 /tmp/fala-unsigned.apk /tmp/Fala-Mais-UI-Fixed-V6.apk
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-UI-Fixed-V6.apk
+          "$APKSIGNER" verify --verbose --print-certs /tmp/Fala-Mais-UI-Fixed-V6.apk
+          "$ZIPALIGN" -c -p 4 /tmp/Fala-Mais-UI-Fixed-V6.apk
+          unzip -tq /tmp/Fala-Mais-UI-Fixed-V6.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-UI-Fixed-V6.apk assets/index.html | grep -Fq 'falaUiFixV6'
+          "$AAPT" dump badging /tmp/Fala-Mais-UI-Fixed-V6.apk | tee /tmp/badging.txt
+          grep -F "sdkVersion:'21'" /tmp/badging.txt
+          grep -F "targetSdkVersion:'35'" /tmp/badging.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-ui-fixed-v6
+          path: /tmp/Fala-Mais-UI-Fixed-V6.apk
+          if-no-files-found: error
+          retention-days: 14
