@@ -1,0 +1,118 @@
+name: Build Fala Compatibility Fixed V4
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-compatibility-fixed-v4.yml
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download latest validated APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base
+          RUN_ID=$(gh run list -R Valdiron/App-fala-mais --workflow build-runtime-v3-fixed.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          test -n "$RUN_ID"
+          gh run download "$RUN_ID" -R Valdiron/App-fala-mais -n fala-mais-runtime-v3-fixed -D /tmp/base
+          APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          unzip -tq /tmp/fala-base.apk >/dev/null
+          unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
+
+      - name: Apply AI assistant compatibility patch
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/index.html')
+          s=p.read_text(encoding='utf-8')
+          patch=r'''<script id="compatibilityV4">
+          (function(){
+            'use strict';
+            const $=id=>document.getElementById(id);
+            let seq=0,timer=null;
+            const open=()=>!!$('aiChatScreen')?.classList.contains('active');
+            function reset(){seq++;if(timer){clearTimeout(timer);timer=null}try{speechSynthesis?.cancel()}catch(e){}const r=$('robotAvatar');r?.classList.remove('listening','thinking','speaking')}
+            function bubble(role,text){if(!open())return;const box=$('chatBox');if(!box)return;const d=document.createElement('div');d.className='chat-bubble '+role;d.textContent=String(text||'');box.appendChild(d);box.scrollTop=box.scrollHeight}
+            function reply(text){const t=String(text||'').trim();if(!t)return'Diga ou escreva uma frase para continuar.';return'Entendi: “'+t+'”. Continue com mais uma frase e eu acompanho sua prática.'}
+            window.askAI=function(text){text=String(text||'').trim();if(!text)return;const my=++seq;bubble('user',text);$('robotAvatar')?.classList.add('thinking');if($('aiSpeechBubble'))$('aiSpeechBubble').textContent='Pensando...';timer=setTimeout(()=>{timer=null;if(my!==seq||!open())return;const r=reply(text);$('robotAvatar')?.classList.remove('thinking');bubble('ai',r);window.speakAIWithMotion?.(r)},180)};
+            window.sendTypedMessage=function(){const i=$('chatInput');if(!i)return;const t=i.value.trim();if(!t)return;i.value='';window.askAI(t)};
+            const oldHome=window.goToHome;window.goToHome=function(){reset();return oldHome?.()};
+            document.addEventListener('visibilitychange',()=>{if(document.hidden)reset()});
+          })();
+          </script>'''
+          if 'compatibilityV4' not in s:
+              s=s.replace('</body>',patch+'\n</body>',1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          node - <<'NODE'
+          const fs=require('fs');const s=fs.readFileSync('/tmp/index.html','utf8');
+          for(const m of s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)) new Function(m[1]);
+          console.log('JavaScript OK');
+          NODE
+
+      - name: Replace only HTML and preserve APK structure
+        run: |
+          set -euo pipefail
+          cp /tmp/fala-base.apk /tmp/fala-unsigned.apk
+          mkdir -p /tmp/update/assets
+          cp /tmp/index.html /tmp/update/assets/index.html
+          cd /tmp/update
+          zip -q -u /tmp/fala-unsigned.apk assets/index.html
+          cd /tmp
+          zip -q -d fala-unsigned.apk 'META-INF/*' || true
+          unzip -tq fala-unsigned.apk >/dev/null
+
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [ ! -s .signing/falamais.keystore ]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Fala Mais, O=Fala Mais, C=BR'
+          fi
+
+      - name: Zipalign sign and verify Android compatibility
+        run: |
+          set -euo pipefail
+          SDK=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
+          ZIPALIGN=$(find "$SDK/build-tools" -type f -name zipalign | sort -V | tail -n 1)
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          AAPT=$(find "$SDK/build-tools" -type f -name aapt | sort -V | tail -n 1)
+          test -x "$ZIPALIGN" && test -x "$APKSIGNER" && test -x "$AAPT"
+          "$ZIPALIGN" -f -p 4 /tmp/fala-unsigned.apk /tmp/Fala-Mais-Compatibility-Fixed-V4.apk
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Compatibility-Fixed-V4.apk
+          "$APKSIGNER" verify --verbose --print-certs /tmp/Fala-Mais-Compatibility-Fixed-V4.apk
+          "$ZIPALIGN" -c -p 4 /tmp/Fala-Mais-Compatibility-Fixed-V4.apk
+          unzip -tq /tmp/Fala-Mais-Compatibility-Fixed-V4.apk >/dev/null
+          "$AAPT" dump badging /tmp/Fala-Mais-Compatibility-Fixed-V4.apk | tee /tmp/badging.txt
+          grep -F "sdkVersion:'21'" /tmp/badging.txt
+          grep -F "targetSdkVersion:'35'" /tmp/badging.txt
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-compatibility-fixed-v4
+          path: /tmp/Fala-Mais-Compatibility-Fixed-V4.apk
+          if-no-files-found: error
+          retention-days: 14
