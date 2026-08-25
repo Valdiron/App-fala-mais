@@ -1,4 +1,4 @@
-name: Build Fala+ Mobile APK
+name: Build Fala+ Compatible APK
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-fala-mobile-${{ github.ref }}
+  group: build-fala-compatible-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -19,7 +19,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Reconstruct Android mobile project
+      - name: Reconstruct Android project
         shell: bash
         run: |
           set -euo pipefail
@@ -33,37 +33,54 @@ jobs:
           test -f android/app/build.gradle
           test -f android/app/src/main/assets/index.html
 
-      - name: Apply official Fala+ launcher icon
+      - name: Apply Android compatibility fixes
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p android/app/src/main/res/drawable-nodpi
           base64 --decode mobiledata/app_icon.webp.b64 > android/app/src/main/res/drawable-nodpi/app_icon.webp
-          test -s android/app/src/main/res/drawable-nodpi/app_icon.webp
 
           python3 - <<'PY'
           from pathlib import Path
-
-          manifest = Path('android/app/src/main/AndroidManifest.xml')
-          text = manifest.read_text()
-          if 'android:icon=' not in text:
-              text = text.replace(
-                  'android:label="Fala+">',
-                  'android:label="Fala+"\n        android:icon="@drawable/app_icon"\n        android:roundIcon="@drawable/app_icon">'
-              )
-          manifest.write_text(text)
+          import re
 
           gradle = Path('android/app/build.gradle')
           text = gradle.read_text()
-          text = text.replace('versionCode 1', 'versionCode 2')
-          text = text.replace("versionName '1.0.0'", "versionName '1.0.1'")
+          text = re.sub(r'minSdk\s+\d+', 'minSdk 21', text)
+          text = re.sub(r'targetSdk\s+\d+', 'targetSdk 35', text)
+          text = re.sub(r'versionCode\s+\d+', 'versionCode 5', text)
+          text = re.sub(r"versionName\s+'[^']+'", "versionName '1.1.2'", text)
           gradle.write_text(text)
+
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          text = manifest.read_text()
+          if 'android.hardware.microphone' not in text:
+              text = text.replace('<application', '<uses-feature android:name="android.hardware.microphone" android:required="false" />\n    <application', 1)
+          if 'android:hardwareAccelerated=' not in text:
+              text = text.replace('<application', '<application\n        android:hardwareAccelerated="true"', 1)
+          if 'android:supportsRtl=' not in text:
+              text = text.replace('android:allowBackup="true"', 'android:allowBackup="true"\n        android:supportsRtl="true"')
+          if 'android:icon=' not in text:
+              text = text.replace('android:label="Fala+"', 'android:label="Fala+"\n        android:icon="@drawable/app_icon"\n        android:roundIcon="@drawable/app_icon"')
+          manifest.write_text(text)
+
+          java = Path('android/app/src/main/java/br/com/falamais/mobile/MainActivity.java')
+          if java.exists():
+              text = java.read_text()
+              if 'import android.os.Build;' not in text:
+                  text = text.replace('import android.os.Bundle;', 'import android.os.Bundle;\nimport android.os.Build;')
+              text = text.replace(
+                  'if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {',
+                  'if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {'
+              )
+              java.write_text(text)
           PY
 
-          grep -Fq 'android:icon="@drawable/app_icon"' android/app/src/main/AndroidManifest.xml
-          grep -Fq 'android:roundIcon="@drawable/app_icon"' android/app/src/main/AndroidManifest.xml
-          grep -Fq 'versionCode 2' android/app/build.gradle
-          grep -Fq "versionName '1.0.1'" android/app/build.gradle
+          grep -Eq 'minSdk[[:space:]]+21' android/app/build.gradle
+          grep -Eq 'targetSdk[[:space:]]+35' android/app/build.gradle
+          grep -Eq 'versionCode[[:space:]]+5' android/app/build.gradle
+          grep -Fq "versionName '1.1.2'" android/app/build.gradle
+          grep -Fq 'android.hardware.microphone' android/app/src/main/AndroidManifest.xml
 
       - uses: actions/setup-java@v4
         with:
@@ -74,11 +91,39 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: Build Android APK
-        working-directory: android
-        run: gradle assembleDebug --stacktrace
+      - name: Restore stable signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
 
-      - name: Verify APK
+      - name: Prepare stable signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [[ ! -s .signing/falamais.keystore ]]; then
+            keytool -genkeypair -noprompt \
+              -keystore .signing/falamais.keystore \
+              -storepass android \
+              -alias falamais \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Fala Mais, O=Fala Mais, C=BR"
+          fi
+
+      - name: Build universal compatible APK
+        working-directory: android
+        run: |
+          gradle assembleDebug --stacktrace \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/.signing/falamais.keystore" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=falamais \
+            -Pandroid.injected.signing.key.password=android
+
+      - name: Verify compatibility and signature
         working-directory: android
         shell: bash
         run: |
@@ -86,16 +131,26 @@ jobs:
           APK=app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
           unzip -tq "$APK" >/dev/null
-          unzip -Z1 "$APK" | grep -Fqx 'AndroidManifest.xml'
-          unzip -Z1 "$APK" | grep -Fqx 'classes.dex'
-          unzip -Z1 "$APK" | grep -Fqx 'assets/index.html'
-          unzip -Z1 "$APK" | grep -Fq 'res/'
-          echo "Fala+ APK ready with official icon: $(du -h "$APK" | cut -f1)"
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          aapt=$(find "$sdk_root/build-tools" -type f -name aapt -print | sort -V | tail -n 1)
+          apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          "$apksigner" verify --verbose --print-certs "$APK"
+          badging=$("$aapt" dump badging "$APK")
+          echo "$badging" | grep -F "sdkVersion:'21'"
+          echo "$badging" | grep -F "targetSdkVersion:'35'"
+          echo "$badging" | grep -F "versionCode='5'"
+          echo "$badging" | grep -F "versionName='1.1.2'"
+          if unzip -Z1 "$APK" | grep -q '^lib/'; then
+            echo 'Native libraries detected:'
+            unzip -Z1 "$APK" | grep '^lib/'
+          else
+            echo 'Universal APK: no ABI-specific native libraries.'
+          fi
 
-      - name: Upload APK
+      - name: Upload compatible APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-mobile-apk-v1.0.1
+          name: fala-mais-compatible-v1.1.2
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
