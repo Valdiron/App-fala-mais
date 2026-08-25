@@ -41,6 +41,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          sudo apt-get update -y >/dev/null
+          sudo apt-get install -y ffmpeg >/dev/null
           python3 -m pip install --quiet opencv-python-headless numpy
           mkdir -p /tmp/robot_frames
           python3 - <<'PY'
@@ -112,7 +114,6 @@ jobs:
           s=s.replace('<img src="app_icon.webp" id="robotAvatar" class="avatar">','<img src="assistant_robot_transparent.webp" id="robotAvatar" class="avatar assistant-transparent-robot" alt="Assistente Holográfico animado">')
           s=s.replace('<div class="ico">🤖</div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>','<div class="ico assistant-card-avatar"><img src="assistant_avatar.webp" alt="Assistente Holográfico"></div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>')
           css=r'''
-          /* Transparent robot animation extracted from the reference video */
           .assistant-card-avatar{overflow:hidden;padding:0!important;background:radial-gradient(circle,rgba(34,211,238,.18),rgba(139,92,246,.08))!important}
           .assistant-card-avatar img{width:100%;height:100%;object-fit:cover;border-radius:14px;animation:assistantCardFloat 3.2s ease-in-out infinite;filter:drop-shadow(0 0 9px rgba(139,92,246,.65))}
           .assistant-transparent-robot{width:210px!important;height:180px!important;max-width:78vw!important;border:0!important;border-radius:0!important;object-fit:contain!important;background:transparent!important;box-shadow:none!important;filter:drop-shadow(0 14px 18px rgba(0,0,0,.32)) drop-shadow(0 0 18px rgba(59,130,246,.35));animation:robotStageFloat 4s ease-in-out infinite!important;will-change:transform,filter}
