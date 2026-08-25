@@ -19,64 +19,130 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore stable Android source
+      - name: Restore known-good Android project
         shell: bash
         run: |
           set -euo pipefail
-          git show d22f0b7e1e734110e948ed0f335528234109f8d0:mobiledata/project.b64.000 > /tmp/project.b64
+          curl -fsSL "https://raw.githubusercontent.com/Valdiron/App-fala-mais/5f923a9fe32f1f6b603940e0d7c035e5a239f51e/mobiledata/project.b64.000" -o /tmp/project.b64
           base64 --decode /tmp/project.b64 > fala-mobile.zip
           unzip -tq fala-mobile.zip
           mkdir android
           unzip -q fala-mobile.zip -d android
+          test -f android/settings.gradle
+          test -f android/app/build.gradle
           test -f android/app/src/main/assets/index.html
-
-      - name: Apply Motion AI interface
-        shell: bash
-        run: |
-          set -euo pipefail
-          cat > /tmp/motion.b64 <<'B64'
-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
-B64
-          base64 --decode /tmp/motion.b64 | gzip -d > android/app/src/main/assets/index.html
-          grep -Fq 'Fala+ App - Motion AI Edition' android/app/src/main/assets/index.html
-          grep -Fq 'id="robotAvatar"' android/app/src/main/assets/index.html
-          grep -Fq 'setAISpeaking' android/app/src/main/assets/index.html
 
       - name: Apply Android compatibility and version
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p android/app/src/main/res/drawable-nodpi
-          git show d22f0b7e1e734110e948ed0f335528234109f8d0:mobiledata/app_icon.webp.b64 | base64 --decode > android/app/src/main/res/drawable-nodpi/app_icon.webp
+          base64 --decode mobiledata/app_icon.webp.b64 > android/app/src/main/res/drawable-nodpi/app_icon.webp
+          cp android/app/src/main/res/drawable-nodpi/app_icon.webp android/app/src/main/assets/app_icon.webp
+
           python3 - <<'PY'
           from pathlib import Path
           import re
-          gradle=Path('android/app/build.gradle')
-          text=gradle.read_text()
-          text=re.sub(r'minSdk\s+\d+','minSdk 21',text)
-          text=re.sub(r'targetSdk\s+\d+','targetSdk 35',text)
-          text=re.sub(r'versionCode\s+\d+','versionCode 7',text)
-          text=re.sub(r"versionName\s+'[^']+'","versionName '1.3.0'",text)
-          gradle.write_text(text)
-          manifest=Path('android/app/src/main/AndroidManifest.xml')
-          text=manifest.read_text()
-          if 'android.hardware.microphone' not in text:
-              text=text.replace('<application','<uses-feature android:name="android.hardware.microphone" android:required="false" />\n    <application',1)
-          if 'android:hardwareAccelerated=' not in text:
-              text=text.replace('<application','<application\n        android:hardwareAccelerated="true"',1)
-          if 'android:supportsRtl=' not in text:
-              text=text.replace('android:allowBackup="true"','android:allowBackup="true"\n        android:supportsRtl="true"')
-          if 'android:icon=' not in text:
-              text=text.replace('android:label="Fala+"','android:label="Fala+"\n        android:icon="@drawable/app_icon"\n        android:roundIcon="@drawable/app_icon"')
-          manifest.write_text(text)
-          java=Path('android/app/src/main/java/br/com/falamais/mobile/MainActivity.java')
+
+          gradle = Path('android/app/build.gradle')
+          s = gradle.read_text()
+          s = re.sub(r'minSdk\s+\d+', 'minSdk 21', s)
+          s = re.sub(r'targetSdk\s+\d+', 'targetSdk 35', s)
+          s = re.sub(r'versionCode\s+\d+', 'versionCode 7', s)
+          s = re.sub(r"versionName\s+'[^']+'", "versionName '1.3.1'", s)
+          gradle.write_text(s)
+
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          s = manifest.read_text()
+          if 'android.hardware.microphone' not in s:
+              s = s.replace('<application', '<uses-feature android:name="android.hardware.microphone" android:required="false" />\n    <application', 1)
+          if 'android:hardwareAccelerated=' not in s:
+              s = s.replace('<application', '<application\n        android:hardwareAccelerated="true"', 1)
+          if 'android:icon=' not in s:
+              s = s.replace('android:label="Fala+"', 'android:label="Fala+"\n        android:icon="@drawable/app_icon"\n        android:roundIcon="@drawable/app_icon"')
+          manifest.write_text(s)
+
+          java = Path('android/app/src/main/java/br/com/falamais/mobile/MainActivity.java')
           if java.exists():
-              text=java.read_text()
-              if 'import android.os.Build;' not in text:
-                  text=text.replace('import android.os.Bundle;','import android.os.Bundle;\nimport android.os.Build;')
-              text=text.replace('if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {','if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {')
-              java.write_text(text)
+              s = java.read_text()
+              if 'import android.os.Build;' not in s:
+                  s = s.replace('import android.os.Bundle;', 'import android.os.Bundle;\nimport android.os.Build;')
+              s = s.replace(
+                  'if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {',
+                  'if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {'
+              )
+              java.write_text(s)
           PY
+
+      - name: Apply Motion AI interface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/assets/index.html')
+          s = p.read_text()
+
+          css = r'''
+          /* Fala+ Motion AI v1.3.1 */
+          body{background:radial-gradient(circle at 18% 8%,rgba(59,130,246,.28),transparent 30%),radial-gradient(circle at 82% 18%,rgba(139,92,246,.30),transparent 34%),linear-gradient(155deg,#07111f,#0a1230 45%,#090d16)!important}
+          .app-container{background:linear-gradient(160deg,rgba(17,30,61,.95),rgba(8,13,28,.96))!important;border-color:rgba(145,192,255,.22)!important;box-shadow:0 28px 80px rgba(0,0,0,.48),0 0 90px rgba(74,123,255,.18)!important}
+          .module-card{border-radius:22px!important;background:linear-gradient(145deg,rgba(255,255,255,.13),rgba(255,255,255,.045))!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.15),0 12px 26px rgba(0,0,0,.18)!important}
+          .module-card.ai-mode{background:linear-gradient(135deg,rgba(112,92,255,.26),rgba(83,139,255,.12))!important;border-color:rgba(167,139,250,.45)!important}
+          .module-card.game-mode{background:linear-gradient(135deg,rgba(255,149,77,.23),rgba(255,76,155,.11))!important;border-color:rgba(251,191,36,.42)!important}
+          .ai-motion-stage{padding:18px 15px 12px;text-align:center;background:linear-gradient(180deg,rgba(139,92,246,.17),rgba(13,17,23,0));border-bottom:1px solid rgba(139,92,246,.22);position:relative}
+          .ai-motion-avatar{width:92px;height:92px;border-radius:50%;border:3px solid #8b5cf6;object-fit:cover;box-shadow:0 0 25px rgba(139,92,246,.58);animation:floatRobot 3s ease-in-out infinite}
+          .ai-motion-avatar.speaking{border-color:#22c55e;animation:floatRobot 3s ease-in-out infinite,glowRobot .5s alternate infinite}
+          @keyframes floatRobot{0%{transform:translateY(0) rotate(0)}50%{transform:translateY(-7px) rotate(1deg)}100%{transform:translateY(0) rotate(0)}}
+          @keyframes glowRobot{from{box-shadow:0 0 14px rgba(34,197,94,.45)}to{box-shadow:0 0 34px rgba(34,197,94,.92)}}
+          .ai-motion-status{margin:9px auto 0;max-width:310px;min-height:40px;display:flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:16px;background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.04));border:1px solid rgba(255,255,255,.12);font-size:.84rem}
+          .chat-bubble.ai{background:linear-gradient(145deg,rgba(255,255,255,.12),rgba(255,255,255,.05))!important}.chat-bubble.user{background:linear-gradient(135deg,#5865ff,#9a5bff)!important}
+          .mic-btn.ai-mic{background:linear-gradient(135deg,#8b5cf6,#6d28d9)!important;box-shadow:0 8px 25px rgba(139,92,246,.42)!important}
+          '''
+          s = s.replace('</style>', css + '\n</style>', 1)
+
+          # Make local icon work offline.
+          s = s.replace('https://i.imgur.com/your-uploaded-icon.png', 'app_icon.webp')
+          s = s.replace('https://i.imgur.com/your-avatar.png', 'app_icon.webp')
+
+          # Upgrade the AI chat screen with animated avatar if the standard screen exists.
+          marker = '<div id="aiChatScreen" class="screen">'
+          if marker in s and 'ai-motion-stage' not in s:
+              s = s.replace(marker, marker + '''\n<div class="ai-motion-stage"><img src="app_icon.webp" id="robotAvatar" class="ai-motion-avatar" alt="Assistente Fala+"><div class="ai-motion-status" id="aiSpeechBubble">Olá! Estou pronto para conversar com você.</div></div>''', 1)
+
+          # Add robust animation hooks without breaking existing speech functions.
+          hook = r'''
+          <script>
+          (function(){
+            function avatar(){return document.getElementById('robotAvatar')}
+            function bubble(){return document.getElementById('aiSpeechBubble')}
+            window.setRobotSpeaking=function(on,text){
+              const a=avatar(), b=bubble();
+              if(a) a.classList.toggle('speaking',!!on);
+              if(b && text) b.textContent=text;
+            };
+            if('speechSynthesis' in window){
+              window.speechSynthesis.addEventListener && window.speechSynthesis.addEventListener('voiceschanged',function(){});
+            }
+            const OriginalUtterance=window.SpeechSynthesisUtterance;
+            if(OriginalUtterance){
+              window.SpeechSynthesisUtterance=function(text){
+                const u=new OriginalUtterance(text);
+                u.addEventListener('start',()=>window.setRobotSpeaking(true,text||'Falando...'));
+                u.addEventListener('end',()=>window.setRobotSpeaking(false,'Pronto para ouvir você.'));
+                u.addEventListener('error',()=>window.setRobotSpeaking(false,'Não consegui reproduzir a voz.'));
+                return u;
+              };
+              window.SpeechSynthesisUtterance.prototype=OriginalUtterance.prototype;
+            }
+          })();
+          </script>
+          '''
+          s = s.replace('</body>', hook + '\n</body>', 1)
+          p.write_text(s)
+          PY
+          grep -Fq 'Fala+ Motion AI v1.3.1' android/app/src/main/assets/index.html
+          grep -Fq 'ai-motion-avatar' android/app/src/main/assets/index.html
 
       - uses: actions/setup-java@v4
         with:
@@ -96,6 +162,7 @@ B64
       - name: Prepare stable signing key
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p .signing
           if [[ ! -s .signing/falamais.keystore ]]; then
             keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fala Mais, O=Fala Mais, C=BR"
@@ -110,7 +177,7 @@ B64
             -Pandroid.injected.signing.key.alias=falamais \
             -Pandroid.injected.signing.key.password=android
 
-      - name: Verify Motion AI APK
+      - name: Verify APK
         working-directory: android
         shell: bash
         run: |
@@ -126,13 +193,13 @@ B64
           echo "$badging" | grep -F "sdkVersion:'21'"
           echo "$badging" | grep -F "targetSdkVersion:'35'"
           echo "$badging" | grep -F "versionCode='7'"
-          echo "$badging" | grep -F "versionName='1.3.0'"
-          unzip -p "$APK" assets/index.html | grep -Fq 'Fala+ App - Motion AI Edition'
+          echo "$badging" | grep -F "versionName='1.3.1'"
+          unzip -p "$APK" assets/index.html | grep -Fq 'Fala+ Motion AI v1.3.1'
 
-      - name: Upload Motion AI APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-motion-ai-v1.3.0
+          name: fala-mais-motion-ai-v1.3.1
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
