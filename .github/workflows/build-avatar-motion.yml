@@ -1,0 +1,122 @@
+name: Build Fala+ Avatar Motion APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: build-fala-avatar-motion-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download validated global languages APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base
+          gh run download 32876958930 -R Valdiron/App-fala-mais -n fala-mais-global-languages -D /tmp/base
+          APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
+          base64 --decode mobiledata/assistant_avatar.webp.b64 > /tmp/assistant_avatar.webp
+          test -s /tmp/assistant_avatar.webp
+
+      - name: Apply holographic avatar and motion
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/index.html')
+          s=p.read_text()
+          s=s.replace('<img src="app_icon.webp" id="robotAvatar" class="avatar">','<img src="assistant_avatar.webp" id="robotAvatar" class="avatar assistant-main-avatar" alt="Assistente Holográfico">')
+          s=s.replace('<div class="ico">🤖</div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>','<div class="ico assistant-card-avatar"><img src="assistant_avatar.webp" alt="Assistente Holográfico"></div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>')
+          css=r'''
+          /* Fala+ animated holographic assistant avatar */
+          .assistant-card-avatar{overflow:hidden;padding:0!important;background:radial-gradient(circle,rgba(34,211,238,.18),rgba(139,92,246,.08))!important}
+          .assistant-card-avatar img{width:100%;height:100%;object-fit:cover;border-radius:14px;animation:assistantCardFloat 3.2s ease-in-out infinite;filter:drop-shadow(0 0 9px rgba(139,92,246,.65))}
+          .assistant-main-avatar{object-fit:cover!important;animation:assistantFloat 3.4s ease-in-out infinite,assistantAura 2.2s ease-in-out infinite!important;will-change:transform,filter,box-shadow}
+          .assistant-main-avatar.speaking{animation:assistantTalk .48s ease-in-out infinite alternate,assistantSpeakGlow .42s ease-in-out infinite alternate!important;border-color:#22c55e!important}
+          .ai-stage{position:relative;overflow:hidden}
+          .ai-stage:before,.ai-stage:after{content:"";position:absolute;left:50%;transform:translateX(-50%);border-radius:50%;pointer-events:none}
+          .ai-stage:before{width:190px;height:38px;bottom:48px;border:2px solid rgba(34,211,238,.26);box-shadow:0 0 24px rgba(59,130,246,.25);animation:holoRing 2.6s ease-in-out infinite}
+          .ai-stage:after{width:140px;height:26px;bottom:54px;border:1px solid rgba(167,139,250,.32);animation:holoRing 2.6s ease-in-out .5s infinite}
+          @keyframes assistantFloat{0%,100%{transform:translateY(0) rotate(-1deg) scale(1)}50%{transform:translateY(-10px) rotate(1.5deg) scale(1.035)}}
+          @keyframes assistantAura{0%,100%{box-shadow:0 0 26px rgba(139,92,246,.58),0 0 56px rgba(34,211,238,.13)}50%{box-shadow:0 0 38px rgba(139,92,246,.82),0 0 82px rgba(34,211,238,.24)}}
+          @keyframes assistantTalk{from{transform:translateY(-4px) scale(1.02) rotate(-.8deg)}to{transform:translateY(-8px) scale(1.055) rotate(.8deg)}}
+          @keyframes assistantSpeakGlow{from{box-shadow:0 0 22px rgba(34,197,94,.55)}to{box-shadow:0 0 48px rgba(34,197,94,.95),0 0 80px rgba(34,211,238,.22)}}
+          @keyframes assistantCardFloat{0%,100%{transform:translateY(1px) scale(1.02)}50%{transform:translateY(-3px) scale(1.08)}}
+          @keyframes holoRing{0%,100%{opacity:.35;transform:translateX(-50%) scale(.82)}50%{opacity:.9;transform:translateX(-50%) scale(1.08)}}
+          '''
+          s=s.replace('</style>',css+'\n</style>',1)
+          s=s.replace('Pronto para conversar com você.','Olá! 👋 Estou pronto para ouvir você.')
+          p.write_text(s)
+          PY
+          grep -Fq 'assistant_main_avatar' /tmp/index.html || grep -Fq 'assistant-main-avatar' /tmp/index.html
+          grep -Fq 'Assistente Holográfico' /tmp/index.html
+          grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT' /tmp/index.html
+
+      - name: Repack APK with avatar asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/apkdir
+          mkdir -p /tmp/apkdir/assets
+          cp /tmp/fala-base.apk /tmp/fala-avatar-unsigned.apk
+          cp /tmp/index.html /tmp/apkdir/assets/index.html
+          cp /tmp/assistant_avatar.webp /tmp/apkdir/assets/assistant_avatar.webp
+          cd /tmp/apkdir
+          zip -q -u /tmp/fala-avatar-unsigned.apk assets/index.html assets/assistant_avatar.webp
+          cd /tmp
+          zip -q -d fala-avatar-unsigned.apk 'META-INF/*' || true
+
+      - name: Restore stable signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [[ ! -s .signing/falamais.keystore ]]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fala Mais, O=Fala Mais, C=BR"
+          fi
+
+      - name: Align sign and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          zipalign=$(find "$sdk_root/build-tools" -type f -name zipalign -print | sort -V | tail -n 1)
+          apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          "$zipalign" -f -p 4 /tmp/fala-avatar-unsigned.apk /tmp/Fala-Mais-Holographic-Avatar-Motion.apk
+          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Holographic-Avatar-Motion.apk
+          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-Holographic-Avatar-Motion.apk
+          unzip -tq /tmp/Fala-Mais-Holographic-Avatar-Motion.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-Holographic-Avatar-Motion.apk assets/index.html | grep -Fq 'assistant-main-avatar'
+          unzip -p /tmp/Fala-Mais-Holographic-Avatar-Motion.apk assets/assistant_avatar.webp >/dev/null
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-holographic-avatar-motion
+          path: /tmp/Fala-Mais-Holographic-Avatar-Motion.apk
+          if-no-files-found: error
+          retention-days: 14
