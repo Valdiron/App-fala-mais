@@ -7,7 +7,7 @@ const port = Number.isFinite(configuredPort) && configuredPort >= 0 && configure
   : 3000;
 const openAiApiKey = (process.env.OPENAI_API_KEY || "").trim();
 const appToken = (process.env.FALA_MAIS_APP_TOKEN || "").trim();
-const realtimeModel = (process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1-mini").trim();
+const realtimeModel = (process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1").trim();
 const realtimeVoice = (process.env.OPENAI_REALTIME_VOICE || "marin").trim();
 const configuredOpenAiTimeoutMs = Number.parseInt(process.env.OPENAI_TIMEOUT_MS || "45000", 10);
 const openAiTimeoutMs = Number.isFinite(configuredOpenAiTimeoutMs)
@@ -20,15 +20,24 @@ const allowedOrigins = new Set(
     .filter(Boolean)
 );
 
+function looksLikeOpenAiApiKey(value) {
+  return /^sk-[A-Za-z0-9_-]{17,}$/.test(value);
+}
+
 const missingConfiguration = [
   !openAiApiKey ? "OPENAI_API_KEY" : null,
   !appToken ? "FALA_MAIS_APP_TOKEN" : null
 ].filter(Boolean);
+const invalidOpenAiApiKey = Boolean(openAiApiKey) && !looksLikeOpenAiApiKey(openAiApiKey);
+const configurationReady = missingConfiguration.length === 0 && !invalidOpenAiApiKey;
 
 if (missingConfiguration.length > 0) {
   console.warn(
     "Fala+ iniciou em modo de configuração. Defina: " + missingConfiguration.join(", ") + "."
   );
+}
+if (invalidOpenAiApiKey) {
+  console.warn("Fala+ iniciou em modo de configuração. OPENAI_API_KEY não tem formato válido.");
 }
 
 const languageNames = {
@@ -158,6 +167,24 @@ function send(response, status, body, headers = {}) {
   response.end(typeof body === "string" ? body : JSON.stringify(body));
 }
 
+function sendConfigurationError(response, cors) {
+  if (missingConfiguration.length > 0) {
+    send(response, 503, {
+      error: "O backend ainda precisa das variáveis secretas do Render.",
+      code: "SERVICE_NOT_CONFIGURED"
+    }, cors);
+    return true;
+  }
+  if (invalidOpenAiApiKey) {
+    send(response, 503, {
+      error: "A variável OPENAI_API_KEY no Render está preenchida incorretamente.",
+      code: "OPENAI_KEY_INVALID"
+    }, cors);
+    return true;
+  }
+  return false;
+}
+
 async function readBody(request, maxBytes = 64 * 1024) {
   const chunks = [];
   let bytes = 0;
@@ -174,20 +201,27 @@ async function readBody(request, maxBytes = 64 * 1024) {
 function sessionInstructions(languageCode) {
   const language = languageNames[languageCode] || languageNames.en;
   return [
-    "# Função",
-    "Você é o professor de conversação do aplicativo Fala+.",
+    "# Papel e objetivo",
+    "Você é Lumi, a professora de IA em tempo real do aplicativo Fala+.",
+    "Ajude o aluno com idiomas e também responda perguntas de assuntos gerais com precisão, clareza e utilidade.",
+    "Você pode conversar, explicar conceitos, traduzir, corrigir pronúncia e gramática, resumir, ensinar passo a passo e ajudar com estudos, matemática e programação.",
+    "# Personalidade e tom",
+    "Seja acolhedora, inteligente, natural e confiante. Fale como uma ótima professora em uma conversa ao vivo.",
     "# Idioma",
-    "Converse sempre no idioma de estudo: " + language + ". Não troque de idioma sem necessidade.",
-    "Use português somente para uma correção curta quando isso ajudar o iniciante e repita imediatamente a forma correta no idioma de estudo.",
-    "# Resposta rápida",
-    "Responda sempre a cada turno concluído do aluno, principalmente quando ele fizer uma pergunta.",
-    "Nunca deixe uma pergunta sem resposta. Se não entender o áudio, peça para repetir imediatamente.",
-    "Responda imediatamente, sem preâmbulos, cumprimentos repetidos ou explicações longas.",
-    "Use uma ou duas frases curtas por turno, faça apenas uma pergunta e aguarde o aluno.",
-    "Fale com ritmo claro e ágil, sem parecer apressado.",
-    "Se o áudio estiver confuso, peça para repetir em uma frase curta.",
+    "O idioma de estudo atual é " + language + ". Use-o por padrão para praticar.",
+    "Se o aluno falar em português, pedir uma explicação em português ou demonstrar dificuldade, responda em português e inclua exemplos no idioma de estudo quando forem úteis.",
+    "Adapte vocabulário, velocidade e complexidade ao nível demonstrado pelo aluno.",
+    "# Raciocínio",
+    "Para perguntas diretas, responda imediatamente. Para perguntas complexas, pense internamente antes de responder, sem revelar raciocínio privado.",
+    "Não invente fatos. Quando não souber ou quando a pergunta depender de informação atual sem acesso ao vivo, diga isso brevemente e ofereça o que consegue explicar com segurança.",
+    "# Velocidade e tamanho",
+    "Comece pela resposta, sem cumprimentos repetidos, preâmbulos ou frases de enchimento.",
+    "Use de uma a três frases curtas por padrão. Aprofunde somente quando o aluno pedir ou quando o assunto exigir para evitar erro.",
+    "Responda a cada turno concluído e faça no máximo uma pergunta de acompanhamento por vez.",
+    "# Áudio pouco claro",
+    "Se não entender o áudio, peça uma repetição curta imediatamente. Não adivinhe palavras, nomes, números ou intenção.",
     "# Segurança",
-    "Não peça senhas, chaves de API, dados bancários ou informações pessoais sensíveis."
+    "Não solicite senhas, chaves de API, dados bancários ou informações pessoais sensíveis. Recuse pedidos perigosos e ofereça ajuda segura quando possível."
   ].join("\n");
 }
 
@@ -217,7 +251,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && requestUrl.pathname === "/") {
     send(response, 200, {
       ok: true,
-      ready: missingConfiguration.length === 0,
+      ready: configurationReady,
       service: "fala-mais-realtime",
       message: "Backend do Fala+ disponível.",
       health: "/health"
@@ -228,9 +262,9 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && requestUrl.pathname === "/health") {
     send(response, 200, {
       ok: true,
-      ready: missingConfiguration.length === 0,
+      ready: configurationReady,
       service: "fala-mais-realtime",
-      version: "1.1.1",
+      version: "1.2.1",
       model: realtimeModel,
       languages: Object.keys(languageNames).length,
       latencyMode: "fast"
@@ -243,13 +277,7 @@ const server = http.createServer(async (request, response) => {
       send(response, 401, { error: "Token do aplicativo inválido.", code: "APP_TOKEN_INVALID" }, cors);
       return;
     }
-    if (missingConfiguration.length > 0) {
-      send(response, 503, {
-        error: "O backend ainda precisa das variáveis secretas do Render.",
-        code: "SERVICE_NOT_CONFIGURED"
-      }, cors);
-      return;
-    }
+    if (sendConfigurationError(response, cors)) return;
     send(response, 200, {
       ok: true,
       service: "fala-mais-realtime",
@@ -270,13 +298,7 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
-  if (missingConfiguration.length > 0) {
-    send(response, 503, {
-      error: "O backend ainda precisa das variáveis secretas do Render.",
-      code: "SERVICE_NOT_CONFIGURED"
-    }, cors);
-    return;
-  }
+  if (sendConfigurationError(response, cors)) return;
 
   const address = clientAddress(request);
   if (rateLimitExceeded(address)) {
@@ -358,7 +380,16 @@ const server = http.createServer(async (request, response) => {
     const responseBody = await openAiResponse.text();
 
     if (!openAiResponse.ok) {
-      console.error("Falha ao criar sessão Realtime:", openAiResponse.status, responseBody.slice(0, 500));
+      let upstreamCode = "unknown";
+      try {
+        const upstreamError = JSON.parse(responseBody);
+        upstreamCode = upstreamError?.error?.code || upstreamError?.error?.type || upstreamCode;
+      } catch {}
+      console.error(JSON.stringify({
+        event: "openai_realtime_session_failed",
+        status: openAiResponse.status,
+        code: String(upstreamCode).slice(0, 80)
+      }));
       send(response, 502, {
         error: "Não foi possível iniciar a conversa com a IA.",
         code: openAiFailureCode(openAiResponse.status)
