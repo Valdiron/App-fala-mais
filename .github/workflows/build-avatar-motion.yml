@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -37,7 +37,71 @@ jobs:
           test -s /tmp/assistant_avatar.webp
           test -s /tmp/assistant_motion.mp4
 
-      - name: Apply robot animation from reference video
+      - name: Remove video background and create transparent animated robot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet opencv-python-headless numpy
+          mkdir -p /tmp/robot_frames
+          python3 - <<'PY'
+          import cv2, numpy as np
+          from pathlib import Path
+
+          src='/tmp/assistant_motion.mp4'
+          out=Path('/tmp/robot_frames')
+          W,H=320,180
+
+          cap=cv2.VideoCapture(src)
+          samples=[]
+          i=0
+          while True:
+              ok,fr=cap.read()
+              if not ok: break
+              if i % 8 == 0:
+                  samples.append(cv2.resize(fr,(W,H),interpolation=cv2.INTER_AREA))
+              i += 1
+          cap.release()
+          if not samples:
+              raise SystemExit('No frames found in assistant motion video')
+
+          bg=np.median(np.stack(samples),axis=0).astype(np.uint8)
+          bg=cv2.GaussianBlur(bg,(5,5),0)
+          k3=np.ones((3,3),np.uint8)
+          k5=np.ones((5,5),np.uint8)
+
+          cap=cv2.VideoCapture(src)
+          i=j=0
+          while True:
+              ok,fr=cap.read()
+              if not ok: break
+              if i % 2 == 0:
+                  fr=cv2.resize(fr,(W,H),interpolation=cv2.INTER_AREA)
+                  d=np.max(cv2.absdiff(cv2.GaussianBlur(fr,(5,5),0),bg),axis=2)
+                  mask=np.where(d>13,255,0).astype(np.uint8)
+                  mask=cv2.morphologyEx(mask,cv2.MORPH_OPEN,k3,iterations=1)
+                  mask=cv2.morphologyEx(mask,cv2.MORPH_CLOSE,k5,iterations=1)
+                  num,labels,stats,_=cv2.connectedComponentsWithStats(mask,8)
+                  keep=np.zeros_like(mask)
+                  for lab in range(1,num):
+                      x,y,w,h,area=stats[lab]
+                      if area >= 45:
+                          keep[labels==lab]=255
+                  keep=cv2.dilate(keep,k3,iterations=1)
+                  alpha=cv2.GaussianBlur(keep,(0,0),1.0)
+                  rgba=cv2.cvtColor(fr,cv2.COLOR_BGR2BGRA)
+                  rgba[:,:,3]=alpha
+                  cv2.imwrite(str(out/f'frame_{j:04d}.png'),rgba,[cv2.IMWRITE_PNG_COMPRESSION,3])
+                  j += 1
+              i += 1
+          cap.release()
+          if j < 10:
+              raise SystemExit('Transparent animation extraction produced too few frames')
+          print('transparent frames:',j)
+          PY
+          ffmpeg -hide_banner -loglevel error -y -framerate 12 -i /tmp/robot_frames/frame_%04d.png -loop 0 -c:v libwebp_anim -q:v 72 -compression_level 4 /tmp/assistant_robot_transparent.webp
+          test -s /tmp/assistant_robot_transparent.webp
+
+      - name: Apply transparent animated holographic robot
         shell: bash
         run: |
           set -euo pipefail
@@ -45,28 +109,27 @@ jobs:
           from pathlib import Path
           p=Path('/tmp/index.html')
           s=p.read_text()
-          s=s.replace('<img src="app_icon.webp" id="robotAvatar" class="avatar">','<video src="assistant_motion.mp4" id="robotAvatar" class="avatar assistant-motion-video" autoplay muted loop playsinline preload="auto" poster="assistant_avatar.webp" aria-label="Assistente Holográfico animado"></video>')
+          s=s.replace('<img src="app_icon.webp" id="robotAvatar" class="avatar">','<img src="assistant_robot_transparent.webp" id="robotAvatar" class="avatar assistant-transparent-robot" alt="Assistente Holográfico animado">')
           s=s.replace('<div class="ico">🤖</div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>','<div class="ico assistant-card-avatar"><img src="assistant_avatar.webp" alt="Assistente Holográfico"></div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>')
           css=r'''
-          /* Robot motion recreated from the user reference video */
+          /* Transparent robot animation extracted from the reference video */
           .assistant-card-avatar{overflow:hidden;padding:0!important;background:radial-gradient(circle,rgba(34,211,238,.18),rgba(139,92,246,.08))!important}
           .assistant-card-avatar img{width:100%;height:100%;object-fit:cover;border-radius:14px;animation:assistantCardFloat 3.2s ease-in-out infinite;filter:drop-shadow(0 0 9px rgba(139,92,246,.65))}
-          .assistant-motion-video{width:210px!important;height:118px!important;max-width:72vw!important;border-radius:22px!important;object-fit:cover!important;border:2px solid rgba(96,165,250,.72)!important;background:#dfe8ef!important;box-shadow:0 0 28px rgba(59,130,246,.45),0 0 58px rgba(139,92,246,.18)!important;animation:videoStageFloat 4s ease-in-out infinite!important;will-change:transform,box-shadow,filter}
-          .assistant-motion-video.listening{animation:videoListen 1s ease-in-out infinite!important;border-color:#38bdf8!important;box-shadow:0 0 34px rgba(56,189,248,.8),0 0 72px rgba(34,211,238,.24)!important}
-          .assistant-motion-video.thinking{animation:videoThink 1.6s ease-in-out infinite!important;border-color:#a78bfa!important;filter:saturate(1.12) brightness(1.04)}
-          .assistant-motion-video.speaking{animation:videoSpeak .58s ease-in-out infinite alternate!important;border-color:#22c55e!important;box-shadow:0 0 38px rgba(34,197,94,.9),0 0 76px rgba(34,211,238,.22)!important}
-          .ai-stage{position:relative;overflow:hidden;perspective:700px}
+          .assistant-transparent-robot{width:210px!important;height:180px!important;max-width:78vw!important;border:0!important;border-radius:0!important;object-fit:contain!important;background:transparent!important;box-shadow:none!important;filter:drop-shadow(0 14px 18px rgba(0,0,0,.32)) drop-shadow(0 0 18px rgba(59,130,246,.35));animation:robotStageFloat 4s ease-in-out infinite!important;will-change:transform,filter}
+          .assistant-transparent-robot.listening{animation:robotListen 1s ease-in-out infinite!important;filter:drop-shadow(0 0 26px rgba(56,189,248,.85))}
+          .assistant-transparent-robot.thinking{animation:robotThink 1.6s ease-in-out infinite!important;filter:drop-shadow(0 0 24px rgba(167,139,250,.8)) saturate(1.08)}
+          .assistant-transparent-robot.speaking{animation:robotSpeak .58s ease-in-out infinite alternate!important;filter:drop-shadow(0 0 30px rgba(34,197,94,.9))}
+          .ai-stage{position:relative;overflow:hidden;perspective:700px;background:linear-gradient(180deg,#07111f,#05070b)!important}
           .ai-stage:before,.ai-stage:after{content:"";position:absolute;left:50%;transform:translateX(-50%);border-radius:50%;pointer-events:none;z-index:0}
-          .ai-stage:before{width:220px;height:42px;bottom:44px;border:2px solid rgba(34,211,238,.28);box-shadow:0 0 26px rgba(59,130,246,.28);animation:holoRing 2.5s ease-in-out infinite}
-          .ai-stage:after{width:158px;height:28px;bottom:51px;border:1px solid rgba(167,139,250,.35);animation:holoRing 2.5s ease-in-out .45s infinite}
-          .ai-stage video{position:relative;z-index:1}
-          @keyframes videoStageFloat{0%,100%{transform:translateY(0) rotate(-.5deg) scale(1)}50%{transform:translateY(-7px) rotate(.7deg) scale(1.025)}}
-          @keyframes videoListen{0%,100%{transform:translateY(-3px) scale(1.02)}50%{transform:translateY(-7px) scale(1.055)}}
-          @keyframes videoThink{0%,100%{transform:translateY(-4px) rotate(-1.2deg) scale(1.02)}50%{transform:translateY(-7px) rotate(1.8deg) scale(1.04)}}
-          @keyframes videoSpeak{from{transform:translateY(-4px) scale(1.025)}to{transform:translateY(-8px) scale(1.06)}}
+          .ai-stage:before{width:220px;height:42px;bottom:54px;border:2px solid rgba(34,211,238,.28);box-shadow:0 0 26px rgba(59,130,246,.28);animation:holoRing 2.5s ease-in-out infinite}
+          .ai-stage:after{width:158px;height:28px;bottom:61px;border:1px solid rgba(167,139,250,.35);animation:holoRing 2.5s ease-in-out .45s infinite}
+          .ai-stage #robotAvatar{position:relative;z-index:1}
+          @keyframes robotStageFloat{0%,100%{transform:translateY(0) rotate(-.5deg) scale(1)}50%{transform:translateY(-7px) rotate(.7deg) scale(1.025)}}
+          @keyframes robotListen{0%,100%{transform:translateY(-3px) scale(1.02)}50%{transform:translateY(-7px) scale(1.055)}}
+          @keyframes robotThink{0%,100%{transform:translateY(-4px) rotate(-1.2deg) scale(1.02)}50%{transform:translateY(-7px) rotate(1.8deg) scale(1.04)}}
+          @keyframes robotSpeak{from{transform:translateY(-4px) scale(1.025)}to{transform:translateY(-8px) scale(1.06)}}
           @keyframes assistantCardFloat{0%,100%{transform:translateY(1px) rotate(-1deg) scale(1.02)}50%{transform:translateY(-4px) rotate(1deg) scale(1.08)}}
           @keyframes holoRing{0%,100%{opacity:.35;transform:translateX(-50%) scale(.82)}50%{opacity:.9;transform:translateX(-50%) scale(1.08)}}
-          @media (prefers-reduced-motion:reduce){.assistant-motion-video,.assistant-card-avatar img,.ai-stage:before,.ai-stage:after{animation-duration:8s!important}}
           '''
           s=s.replace('</style>',css+'\n</style>',1)
           hook=r'''
@@ -76,7 +139,6 @@ jobs:
               var a=document.getElementById('robotAvatar'); if(!a)return;
               a.classList.remove('listening','thinking');
               if(state)a.classList.add(state);
-              if(a.tagName==='VIDEO' && a.paused){a.play().catch(function(){});}
             }
             window.falaAvatarState=avatarState;
             document.addEventListener('click',function(e){
@@ -89,10 +151,7 @@ jobs:
               else if(t.includes('pens')||t.includes('process')||t.includes('aguarde')) avatarState('thinking');
               else if(!t.includes('falando')&&!t.includes('speaking')){var a=document.getElementById('robotAvatar');if(a)a.classList.remove('listening','thinking');}
             });
-            document.addEventListener('DOMContentLoaded',function(){
-              var v=document.getElementById('robotAvatar');if(v&&v.tagName==='VIDEO'){v.muted=true;v.loop=true;v.play().catch(function(){});}
-              var el=document.getElementById('aiMicStatus');if(el)obs.observe(el,{childList:true,subtree:true,characterData:true});
-            });
+            document.addEventListener('DOMContentLoaded',function(){var el=document.getElementById('aiMicStatus');if(el)obs.observe(el,{childList:true,subtree:true,characterData:true});});
           })();
           </script>
           '''
@@ -100,11 +159,11 @@ jobs:
           s=s.replace('Pronto para conversar com você.','Olá! 👋 Estou pronto para ouvir você.')
           p.write_text(s)
           PY
-          grep -Fq 'assistant-motion-video' /tmp/index.html
-          grep -Fq 'assistant_motion.mp4' /tmp/index.html
+          grep -Fq 'assistant-transparent-robot' /tmp/index.html
+          grep -Fq 'assistant_robot_transparent.webp' /tmp/index.html
           grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT' /tmp/index.html
 
-      - name: Repack APK with animated robot assets
+      - name: Repack APK with transparent animated robot
         shell: bash
         run: |
           set -euo pipefail
@@ -113,9 +172,9 @@ jobs:
           cp /tmp/fala-base.apk /tmp/fala-avatar-unsigned.apk
           cp /tmp/index.html /tmp/apkdir/assets/index.html
           cp /tmp/assistant_avatar.webp /tmp/apkdir/assets/assistant_avatar.webp
-          cp /tmp/assistant_motion.mp4 /tmp/apkdir/assets/assistant_motion.mp4
+          cp /tmp/assistant_robot_transparent.webp /tmp/apkdir/assets/assistant_robot_transparent.webp
           cd /tmp/apkdir
-          zip -q -u /tmp/fala-avatar-unsigned.apk assets/index.html assets/assistant_avatar.webp assets/assistant_motion.mp4
+          zip -q -u /tmp/fala-avatar-unsigned.apk assets/index.html assets/assistant_avatar.webp assets/assistant_robot_transparent.webp
           cd /tmp
           zip -q -d fala-avatar-unsigned.apk 'META-INF/*' || true
 
@@ -141,17 +200,17 @@ jobs:
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           zipalign=$(find "$sdk_root/build-tools" -type f -name zipalign -print | sort -V | tail -n 1)
           apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
-          "$zipalign" -f -p 4 /tmp/fala-avatar-unsigned.apk /tmp/Fala-Mais-Holographic-Avatar-Motion.apk
-          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Holographic-Avatar-Motion.apk
-          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-Holographic-Avatar-Motion.apk
-          unzip -tq /tmp/Fala-Mais-Holographic-Avatar-Motion.apk >/dev/null
-          unzip -p /tmp/Fala-Mais-Holographic-Avatar-Motion.apk assets/index.html | grep -Fq 'assistant-motion-video'
-          unzip -p /tmp/Fala-Mais-Holographic-Avatar-Motion.apk assets/assistant_motion.mp4 >/dev/null
+          "$zipalign" -f -p 4 /tmp/fala-avatar-unsigned.apk /tmp/Fala-Mais-Holographic-Robot-Transparent.apk
+          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Holographic-Robot-Transparent.apk
+          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-Holographic-Robot-Transparent.apk
+          unzip -tq /tmp/Fala-Mais-Holographic-Robot-Transparent.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-Holographic-Robot-Transparent.apk assets/index.html | grep -Fq 'assistant-transparent-robot'
+          unzip -p /tmp/Fala-Mais-Holographic-Robot-Transparent.apk assets/assistant_robot_transparent.webp >/dev/null
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-holographic-avatar-motion
-          path: /tmp/Fala-Mais-Holographic-Avatar-Motion.apk
+          name: fala-mais-holographic-robot-transparent
+          path: /tmp/Fala-Mais-Holographic-Robot-Transparent.apk
           if-no-files-found: error
           retention-days: 14
