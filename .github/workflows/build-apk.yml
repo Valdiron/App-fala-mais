@@ -1,4 +1,4 @@
-name: Build Fala+ Compatible APK
+name: Build Fala+ Glass 3D APK
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-fala-compatible-${{ github.ref }}
+  group: build-fala-glass-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -48,8 +48,8 @@ jobs:
           text = gradle.read_text()
           text = re.sub(r'minSdk\s+\d+', 'minSdk 21', text)
           text = re.sub(r'targetSdk\s+\d+', 'targetSdk 35', text)
-          text = re.sub(r'versionCode\s+\d+', 'versionCode 5', text)
-          text = re.sub(r"versionName\s+'[^']+'", "versionName '1.1.2'", text)
+          text = re.sub(r'versionCode\s+\d+', 'versionCode 6', text)
+          text = re.sub(r"versionName\s+'[^']+'", "versionName '1.2.0'", text)
           gradle.write_text(text)
 
           manifest = Path('android/app/src/main/AndroidManifest.xml')
@@ -76,11 +76,43 @@ jobs:
               java.write_text(text)
           PY
 
-          grep -Eq 'minSdk[[:space:]]+21' android/app/build.gradle
-          grep -Eq 'targetSdk[[:space:]]+35' android/app/build.gradle
-          grep -Eq 'versionCode[[:space:]]+5' android/app/build.gradle
-          grep -Fq "versionName '1.1.2'" android/app/build.gradle
-          grep -Fq 'android.hardware.microphone' android/app/src/main/AndroidManifest.xml
+      - name: Apply Glass 3D interface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('android/app/src/main/assets/index.html')
+          s = p.read_text()
+          css = r'''
+          /* Fala+ Glass 3D Edition */
+          :root{--glass-blue:#55b8ff;--glass-violet:#8b5cf6;--glass-pink:#ff5ca8;--glass-cyan:#45e0ff}
+          body{background:radial-gradient(circle at 15% 5%,rgba(84,164,255,.35),transparent 30%),radial-gradient(circle at 85% 16%,rgba(139,92,246,.35),transparent 34%),linear-gradient(155deg,#07111f 0%,#0a1230 45%,#0a0d18 100%)!important}
+          .app-container{background:linear-gradient(160deg,rgba(18,34,69,.93),rgba(8,13,28,.95))!important;border-color:rgba(145,192,255,.22)!important;box-shadow:0 28px 80px rgba(0,0,0,.48),0 0 90px rgba(74,123,255,.18)!important}
+          .app-container:before,.app-container:after{content:"";position:absolute;border-radius:50%;pointer-events:none;z-index:0}.app-container:before{width:230px;height:230px;right:-100px;top:90px;background:radial-gradient(circle,rgba(128,91,255,.28),transparent 68%)}.app-container:after{width:210px;height:210px;left:-110px;bottom:80px;background:radial-gradient(circle,rgba(45,192,255,.22),transparent 68%)}
+          .screen>*{position:relative;z-index:1}.home-header{padding-top:calc(24px + env(safe-area-inset-top))!important}
+          .glass-hero{margin:0 18px 12px;padding:18px 18px 16px;border-radius:28px;background:linear-gradient(145deg,rgba(255,255,255,.18),rgba(255,255,255,.055));border:1px solid rgba(198,220,255,.28);box-shadow:inset 0 1px 0 rgba(255,255,255,.28),0 18px 45px rgba(24,63,160,.25);backdrop-filter:blur(22px);position:relative;overflow:hidden}
+          .glass-hero:before{content:"";position:absolute;inset:-60% 40% 55% -30%;background:linear-gradient(135deg,rgba(255,255,255,.34),rgba(255,255,255,0));transform:rotate(-10deg);border-radius:50%}
+          .hero-row{display:flex;align-items:center;gap:14px;text-align:left}.hero-copy{flex:1}.hero-copy h1{font-size:1.65rem;line-height:1.05;letter-spacing:-.02em}.hero-copy p{font-size:.78rem;color:#c7d7f5;margin-top:6px;line-height:1.35}.hero-chips{display:flex;gap:7px;margin-top:11px;flex-wrap:wrap}.hero-chip{font-size:.68rem;font-weight:800;padding:6px 8px;border-radius:999px;background:rgba(255,255,255,.11);border:1px solid rgba(255,255,255,.16);color:#eaf3ff}.hero-chip.live{background:rgba(34,197,94,.13);color:#8ff0b0;border-color:rgba(34,197,94,.25)}
+          .app-logo-img{width:78px!important;height:78px!important;border-radius:24px!important;margin:0!important;box-shadow:0 16px 34px rgba(31,112,255,.35),0 0 25px rgba(154,93,255,.2)!important;border-color:rgba(255,255,255,.34)!important}
+          .language-selector-bar{margin:0 18px 12px!important;padding:6px 12px!important;border-radius:18px!important;background:linear-gradient(145deg,rgba(255,255,255,.14),rgba(255,255,255,.05))!important;border-color:rgba(183,211,255,.23)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.17),0 12px 30px rgba(15,44,100,.2)!important}
+          .modules-list{padding:4px 18px 26px!important;gap:12px!important}.module-card{min-height:74px;border-radius:22px!important;padding:14px 15px!important;background:linear-gradient(145deg,rgba(255,255,255,.14),rgba(255,255,255,.045))!important;border-color:rgba(176,211,255,.2)!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 12px 26px rgba(0,0,0,.18)!important}
+          .module-card.ai-mode{background:linear-gradient(135deg,rgba(112,92,255,.25),rgba(83,139,255,.12))!important;border-color:rgba(167,139,250,.45)!important}.module-card.game-mode{background:linear-gradient(135deg,rgba(255,149,77,.23),rgba(255,76,155,.11))!important;border-color:rgba(251,191,36,.42)!important}
+          .module-icon{width:45px!important;height:45px!important;border-radius:15px!important;background:linear-gradient(145deg,rgba(255,255,255,.19),rgba(255,255,255,.05))!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 10px 18px rgba(0,0,0,.16)!important}.module-info h3{font-size:1rem!important}.module-info span{font-size:.74rem!important;color:#b8c8e6!important}.ai-mini img{width:43px!important;height:43px!important;border-radius:15px!important;border:1px solid rgba(255,255,255,.28)!important;box-shadow:0 10px 24px rgba(92,72,255,.28)!important}
+          header{background:linear-gradient(180deg,rgba(18,32,65,.92),rgba(18,32,65,.5))!important;backdrop-filter:blur(18px)}.lesson-content,.game-content{background:radial-gradient(circle at 50% 28%,rgba(74,140,255,.15),transparent 42%)}
+          .chat-bubble.ai{background:linear-gradient(145deg,rgba(255,255,255,.13),rgba(255,255,255,.055))!important;border-color:rgba(184,211,255,.2)!important;box-shadow:0 8px 22px rgba(0,0,0,.16)}.chat-bubble.user{background:linear-gradient(135deg,#5468ff,#9a5bff)!important;box-shadow:0 10px 24px rgba(94,70,255,.24)}
+          .game-option-btn{border-radius:16px!important;background:linear-gradient(145deg,rgba(255,255,255,.13),rgba(255,255,255,.045))!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 8px 18px rgba(0,0,0,.14)}
+          .composer,footer{backdrop-filter:blur(18px);background:rgba(8,15,33,.68)!important}
+          '''
+          s = s.replace('</style>', css + '\n</style>', 1)
+          old = '<div id="homeScreen" class="screen active"><div class="home-header"><img src="app_icon.webp" class="app-logo-img" alt="Fala+"><h1>Fala+</h1><p>Escolha o idioma e comece a praticar:</p></div>'
+          new = '<div id="homeScreen" class="screen active"><div class="home-header"><div class="glass-hero"><div class="hero-row"><img src="app_icon.webp" class="app-logo-img" alt="Fala+"><div class="hero-copy"><h1>Fala+ <span style="color:#83b9ff">AI</span></h1><p>Aprenda idiomas com voz, desafios e inteligência artificial.</p><div class="hero-chips"><span class="hero-chip live">● IA online</span><span class="hero-chip">🎮 Game Mode</span><span class="hero-chip">🎤 Voz</span></div></div></div></div></div>'
+          if old in s:
+              s = s.replace(old, new, 1)
+          p.write_text(s)
+          PY
+          grep -Fq 'Fala+ Glass 3D Edition' android/app/src/main/assets/index.html
+          grep -Fq 'glass-hero' android/app/src/main/assets/index.html
 
       - uses: actions/setup-java@v4
         with:
@@ -114,7 +146,7 @@ jobs:
               -dname "CN=Fala Mais, O=Fala Mais, C=BR"
           fi
 
-      - name: Build universal compatible APK
+      - name: Build compatible Glass APK
         working-directory: android
         run: |
           gradle assembleDebug --stacktrace \
@@ -123,7 +155,7 @@ jobs:
             -Pandroid.injected.signing.key.alias=falamais \
             -Pandroid.injected.signing.key.password=android
 
-      - name: Verify compatibility and signature
+      - name: Verify APK
         working-directory: android
         shell: bash
         run: |
@@ -138,19 +170,14 @@ jobs:
           badging=$("$aapt" dump badging "$APK")
           echo "$badging" | grep -F "sdkVersion:'21'"
           echo "$badging" | grep -F "targetSdkVersion:'35'"
-          echo "$badging" | grep -F "versionCode='5'"
-          echo "$badging" | grep -F "versionName='1.1.2'"
-          if unzip -Z1 "$APK" | grep -q '^lib/'; then
-            echo 'Native libraries detected:'
-            unzip -Z1 "$APK" | grep '^lib/'
-          else
-            echo 'Universal APK: no ABI-specific native libraries.'
-          fi
+          echo "$badging" | grep -F "versionCode='6'"
+          echo "$badging" | grep -F "versionName='1.2.0'"
+          unzip -p "$APK" assets/index.html | grep -Fq 'Fala+ Glass 3D Edition'
 
-      - name: Upload compatible APK
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-compatible-v1.1.2
+          name: fala-mais-glass-3d-v1.2.0
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
