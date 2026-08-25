@@ -32,7 +32,7 @@ jobs:
           test -s "$APK"
           cp "$APK" /tmp/fala-base.apk
           unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
-          base64 --decode mobiledata/assistant_avatar.webp.b64 > /tmp/assistant_avatar.webp
+          base64 --decode mobiledata/assistant_avatar_small.webp.b64 > /tmp/assistant_avatar.webp
           test -s /tmp/assistant_avatar.webp
 
       - name: Apply holographic avatar and motion
@@ -66,7 +66,7 @@ jobs:
           s=s.replace('Pronto para conversar com você.','Olá! 👋 Estou pronto para ouvir você.')
           p.write_text(s)
           PY
-          grep -Fq 'assistant_main_avatar' /tmp/index.html || grep -Fq 'assistant-main-avatar' /tmp/index.html
+          grep -Fq 'assistant-main-avatar' /tmp/index.html
           grep -Fq 'Assistente Holográfico' /tmp/index.html
           grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT' /tmp/index.html
 
