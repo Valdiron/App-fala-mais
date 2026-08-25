@@ -1,0 +1,174 @@
+name: Build Fala+ New Home UI APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-new-home-ui.yml'
+      - 'mobiledata/fala_plus_50_games_ai.html'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: build-fala-new-home-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore current Fala+ APK and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base
+          gh run download 32895975565 -R Valdiron/App-fala-mais -n fala-mais-50-games-ai -D /tmp/base
+          APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
+          unzip -p /tmp/fala-base.apk assets/app_icon.webp > /tmp/app_icon.webp
+          unzip -p /tmp/fala-base.apk assets/assistant_robot_transparent.webp > /tmp/assistant_robot_transparent.webp
+
+      - name: Apply reference-inspired home screen
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p=Path('/tmp/index.html')
+          s=p.read_text(encoding='utf-8')
+
+          css=r'''
+          /* Reference-inspired Fala+ home screen */
+          #homeScreen{background:radial-gradient(circle at 50% -10%,rgba(37,99,235,.28),transparent 34%),linear-gradient(180deg,#030713 0%,#061127 54%,#040914 100%);overflow-y:auto;padding-bottom:96px}
+          .ref-home{padding:14px 18px 8px;min-height:100%}
+          .ref-brand{display:flex;align-items:center;justify-content:center;gap:14px;margin:6px 0 4px}.ref-brand img{width:72px;height:72px;border-radius:50%;object-fit:cover;box-shadow:0 0 28px rgba(59,130,246,.75),0 0 48px rgba(139,92,246,.28)}
+          .ref-logo-text{font-size:2.55rem;font-weight:300;letter-spacing:-2px;line-height:1}.ref-logo-text b{font-weight:500}.ref-logo-text span{color:#8b5cf6;text-shadow:0 0 18px rgba(139,92,246,.9)}
+          .ref-tagline{text-align:center;font-size:.62rem;letter-spacing:.32em;color:#b8c2d8;margin:4px 0 18px;text-transform:uppercase}
+          .ref-lang{display:flex;align-items:center;gap:10px;padding:12px 14px;border:1px solid rgba(96,165,250,.28);border-radius:22px;background:rgba(8,18,42,.72);box-shadow:inset 0 0 20px rgba(59,130,246,.05);margin-bottom:16px}.ref-lang .globe{font-size:1.05rem}.ref-lang select{flex:1;background:transparent;border:0;color:#f8fafc;font-weight:700;font-size:.9rem;outline:none}.ref-lang select option{background:#07111f;color:#fff}
+          .hero-card{position:relative;overflow:hidden;border-radius:22px;border:1px solid rgba(96,165,250,.42);background:radial-gradient(circle at 78% 45%,rgba(37,99,235,.34),transparent 34%),linear-gradient(145deg,rgba(6,20,49,.97),rgba(7,11,30,.98));padding:22px 18px;min-height:210px;margin-bottom:14px;box-shadow:0 12px 30px rgba(0,0,0,.24),inset 0 0 30px rgba(59,130,246,.04)}
+          .hero-card.games{border-color:rgba(139,92,246,.42);background:radial-gradient(circle at 75% 52%,rgba(91,33,182,.36),transparent 34%),linear-gradient(145deg,rgba(8,15,42,.98),rgba(14,8,38,.98))}
+          .hero-copy{position:relative;z-index:2;width:57%}.hero-copy h2{font-size:1.38rem;margin-bottom:8px}.hero-line{width:44px;height:3px;border-radius:4px;background:linear-gradient(90deg,#38bdf8,#8b5cf6);margin-bottom:12px}.hero-copy p{font-size:.78rem;line-height:1.5;color:#c5cde0;margin-bottom:16px}
+          .hero-action{border:0;border-radius:14px;padding:11px 18px;color:#fff;font-weight:800;background:linear-gradient(90deg,#1687ff,#8b5cf6);box-shadow:0 8px 20px rgba(59,130,246,.3);cursor:pointer}.hero-art{position:absolute;right:8px;bottom:4px;width:42%;height:92%;display:flex;align-items:flex-end;justify-content:center}.hero-art img{max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 0 20px rgba(59,130,246,.7))}.hero-art.game-art{font-size:5.5rem;align-items:center;filter:drop-shadow(0 0 18px rgba(139,92,246,.7))}
+          .quick-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:4px}.quick-card{min-height:96px;border-radius:18px;border:1px solid rgba(96,165,250,.22);background:linear-gradient(145deg,rgba(11,27,61,.84),rgba(5,13,33,.94));padding:12px;display:flex;gap:10px;align-items:flex-start;cursor:pointer}.quick-card:active{transform:scale(.985)}.quick-ico{width:38px;height:38px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.25rem;background:rgba(37,99,235,.14);border:1px solid rgba(96,165,250,.34);box-shadow:0 0 14px rgba(59,130,246,.16)}.quick-card:nth-child(2n) .quick-ico{border-color:rgba(167,139,250,.4);background:rgba(139,92,246,.12)}.quick-card h3{font-size:.78rem;margin-bottom:4px}.quick-card p{font-size:.63rem;line-height:1.35;color:#aab4ca}
+          .ref-bottom{position:absolute;left:12px;right:12px;bottom:10px;height:72px;border-radius:24px;border:1px solid rgba(96,165,250,.2);background:rgba(4,11,27,.92);backdrop-filter:blur(18px);display:flex;align-items:center;justify-content:space-around;z-index:10;box-shadow:0 12px 28px rgba(0,0,0,.4)}.nav-item{border:0;background:transparent;color:#71809e;font-size:.64rem;display:flex;flex-direction:column;gap:4px;align-items:center;cursor:pointer}.nav-item .nicon{font-size:1.2rem}.nav-item.active{color:#38bdf8}.nav-voice{width:58px;height:58px;border-radius:50%;border:1px solid rgba(96,165,250,.5);background:radial-gradient(circle at 40% 35%,#123c8c,#0a0e3b 60%,#070b24);color:#38bdf8;font-size:1.65rem;box-shadow:0 0 24px rgba(59,130,246,.52),inset 0 0 16px rgba(96,165,250,.15);margin-top:-18px}
+          @media(max-width:360px){.hero-copy{width:62%}.ref-logo-text{font-size:2.2rem}.hero-card{min-height:198px;padding:18px 15px}.quick-grid{gap:8px}.quick-card{min-height:92px;padding:10px}}
+          '''
+          s=s.replace('</style>',css+'\n</style>',1)
+
+          new_home=r'''<div id="homeScreen" class="screen active"><div class="ref-home">
+          <div class="ref-brand"><img src="app_icon.webp" alt="Fala+"><div class="ref-logo-text"><b>Fala</b><span>+</span></div></div>
+          <div class="ref-tagline">Speak • Learn • Connect</div>
+          <div class="ref-lang"><span class="globe">🌐</span><select id="globalLang" onchange="changeLanguage()"><option value="en-US">English</option><option value="es-ES">Español</option><option value="fr-FR">Français</option><option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="ja-JP">日本語</option></select><span>⌄</span></div>
+          <div class="hero-card"><div class="hero-copy"><h2>AI Assistant</h2><div class="hero-line"></div><p>Seu tutor pessoal de IA para praticar conversas, receber feedback e melhorar sua fluência.</p><button class="hero-action" onclick="startAIChat()">Iniciar Chat&nbsp;&nbsp;→</button></div><div class="hero-art"><img src="assistant_robot_transparent.webp" alt="Assistente IA"></div></div>
+          <div class="hero-card games"><div class="hero-copy"><h2>AI Games Arena</h2><div class="hero-line"></div><p>Aprenda idiomas jogando, ganhe pontos e avance nos desafios.</p><button class="hero-action" onclick="startAIGame()">🎮 Jogar Agora&nbsp;&nbsp;→</button></div><div class="hero-art game-art">🏆🎮</div></div>
+          <div class="quick-grid">
+            <div class="quick-card" onclick="openQuickModule(0)"><div class="quick-ico">💬</div><div><h3>Conversas Diárias</h3><p>Pratique situações reais do dia a dia.</p></div></div>
+            <div class="quick-card" onclick="openQuickModule(1)"><div class="quick-ico">🧳</div><div><h3>Viagem & Explorar</h3><p>Frases úteis para viajar com confiança.</p></div></div>
+            <div class="quick-card" onclick="openQuickModule(0)"><div class="quick-ico">💼</div><div><h3>Comunicação Profissional</h3><p>Melhore vocabulário para trabalho e negócios.</p></div></div>
+            <div class="quick-card" onclick="openQuickModule(0)"><div class="quick-ico">🎙️</div><div><h3>Coach de Pronúncia</h3><p>Treine sua pronúncia usando o microfone.</p></div></div>
+            <div class="quick-card" onclick="startAIGame()"><div class="quick-ico">📖</div><div><h3>Vocabulário</h3><p>Expanda seu vocabulário com quizzes.</p></div></div>
+            <div class="quick-card" onclick="openQuickModule(0)"><div class="quick-ico">Aa</div><div><h3>Gramática</h3><p>Aprenda regras de forma simples e interativa.</p></div></div>
+          </div></div>
+          <div class="ref-bottom"><button class="nav-item active" onclick="goToHome()"><span class="nicon">🏠</span><span>Home</span></button><button class="nav-item" onclick="openQuickModule(0)"><span class="nicon">🎓</span><span>Learn</span></button><button class="nav-voice" onclick="startAIChat()">〽</button><button class="nav-item" onclick="showHomeInfo('Progresso salvo: '+score+' XP')"><span class="nicon">📊</span><span>Progress</span></button><button class="nav-item" onclick="showHomeInfo('Perfil Fala+ em desenvolvimento')"><span class="nicon">◉</span><span>Profile</span></button></div></div>'''
+
+          s,n=re.subn(r'<div id="homeScreen" class="screen active">.*?</div></div>\s*<div id="lessonScreen"',new_home+'\n<div id="lessonScreen"',s,count=1,flags=re.S)
+          if n!=1:
+              raise SystemExit('Could not replace home screen')
+
+          hook=r'''
+          <script>
+          function openQuickModule(index){
+            const mods=(typeof multiLangLessons!=='undefined'&&(multiLangLessons[currentLang]||multiLangLessons['en-US']))||[];
+            if(!mods.length){showHomeInfo('Lição indisponível neste idioma.');return;}
+            startModule(Math.max(0,Math.min(index,mods.length-1)));
+          }
+          function showHomeInfo(message){
+            if(typeof alert==='function') alert(message);
+          }
+          </script>
+          '''
+          s=s.replace('</body>',hook+'\n</body>',1)
+          p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Validate new home screen
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'AI Assistant' /tmp/index.html
+          grep -Fq 'AI Games Arena' /tmp/index.html
+          grep -Fq 'Conversas Diárias' /tmp/index.html
+          grep -Fq 'ref-bottom' /tmp/index.html
+          node - <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('/tmp/index.html','utf8');
+          const scripts=[...s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+          scripts.forEach((m,i)=>{try{new Function(m[1])}catch(e){throw new Error(`Script ${i+1}: ${e.message}`)}});
+          const funcs=new Set([...s.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(x=>x[1]));
+          const handlers=[...s.matchAll(/on(?:click|change|input|submit)="([^"]+)"/g)].map(x=>(x[1].match(/^\s*([A-Za-z_$][\w$]*)\s*\(/)||[])[1]).filter(Boolean);
+          const missing=[...new Set(handlers.filter(h=>!funcs.has(h)))];
+          if(missing.length) throw new Error('Missing handlers: '+missing.join(','));
+          console.log('New home validated');
+          NODE
+
+      - name: Repack APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/apkdir && mkdir -p /tmp/apkdir/assets
+          cp /tmp/fala-base.apk /tmp/fala-home-unsigned.apk
+          cp /tmp/index.html /tmp/apkdir/assets/index.html
+          cp /tmp/app_icon.webp /tmp/apkdir/assets/app_icon.webp
+          cp /tmp/assistant_robot_transparent.webp /tmp/apkdir/assets/assistant_robot_transparent.webp
+          cd /tmp/apkdir
+          zip -q -u /tmp/fala-home-unsigned.apk assets/index.html assets/app_icon.webp assets/assistant_robot_transparent.webp
+          cd /tmp
+          zip -q -d fala-home-unsigned.apk 'META-INF/*' || true
+
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [[ ! -s .signing/falamais.keystore ]]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fala Mais, O=Fala Mais, C=BR"
+          fi
+
+      - name: Align sign and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          zipalign=$(find "$sdk_root/build-tools" -type f -name zipalign -print | sort -V | tail -n 1)
+          apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          "$zipalign" -f -p 4 /tmp/fala-home-unsigned.apk /tmp/Fala-Mais-New-Home-UI.apk
+          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-New-Home-UI.apk
+          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-New-Home-UI.apk
+          unzip -tq /tmp/Fala-Mais-New-Home-UI.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-New-Home-UI.apk assets/index.html | grep -Fq 'AI Games Arena'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-new-home-ui
+          path: /tmp/Fala-Mais-New-Home-UI.apk
+          if-no-files-found: error
+          retention-days: 14
