@@ -1,0 +1,107 @@
+name: Build Fala+ Global Languages APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: build-fala-global-languages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download validated holographic APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base
+          gh run download 32876582456 -R Valdiron/App-fala-mais -n fala-mais-holographic-stable -D /tmp/base
+          APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
+          test -s /tmp/index.html
+
+      - name: Add global language coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          p=Path('/tmp/index.html')
+          s=p.read_text()
+          langs=[
+          ('af-ZA','Afrikaans'),('sq-AL','Shqip'),('am-ET','አማርኛ'),('ar-SA','العربية'),('hy-AM','Հայերեն'),('az-AZ','Azərbaycan dili'),('eu-ES','Euskara'),('bn-BD','বাংলা'),('bs-BA','Bosanski'),('bg-BG','Български'),('my-MM','မြန်မာ'),('ca-ES','Català'),('zh-CN','中文（简体）'),('zh-TW','中文（繁體）'),('hr-HR','Hrvatski'),('cs-CZ','Čeština'),('da-DK','Dansk'),('nl-NL','Nederlands'),('en-US','English'),('en-GB','English UK'),('et-EE','Eesti'),('fil-PH','Filipino'),('fi-FI','Suomi'),('fr-FR','Français'),('gl-ES','Galego'),('ka-GE','ქართული'),('de-DE','Deutsch'),('el-GR','Ελληνικά'),('gu-IN','ગુજરાતી'),('he-IL','עברית'),('hi-IN','हिन्दी'),('hu-HU','Magyar'),('is-IS','Íslenska'),('id-ID','Bahasa Indonesia'),('ga-IE','Gaeilge'),('it-IT','Italiano'),('ja-JP','日本語'),('jv-ID','Basa Jawa'),('kn-IN','ಕನ್ನಡ'),('kk-KZ','Қазақша'),('km-KH','ខ្មែរ'),('ko-KR','한국어'),('lo-LA','ລາວ'),('lv-LV','Latviešu'),('lt-LT','Lietuvių'),('mk-MK','Македонски'),('ms-MY','Bahasa Melayu'),('ml-IN','മലയാളം'),('mr-IN','मराठी'),('mn-MN','Монгол'),('ne-NP','नेपाली'),('no-NO','Norsk'),('fa-IR','فارسی'),('pl-PL','Polski'),('pt-BR','Português Brasil'),('pt-PT','Português Portugal'),('pa-IN','ਪੰਜਾਬੀ'),('ro-RO','Română'),('ru-RU','Русский'),('sr-RS','Српски'),('si-LK','සිංහල'),('sk-SK','Slovenčina'),('sl-SI','Slovenščina'),('es-ES','Español'),('es-MX','Español México'),('sw-KE','Kiswahili'),('sv-SE','Svenska'),('ta-IN','தமிழ்'),('te-IN','తెలుగు'),('th-TH','ไทย'),('tr-TR','Türkçe'),('uk-UA','Українська'),('ur-PK','اردو'),('uz-UZ','O‘zbek'),('vi-VN','Tiếng Việt'),('cy-GB','Cymraeg'),('zu-ZA','isiZulu'),('xh-ZA','isiXhosa'),('so-SO','Soomaali'),('ha-NG','Hausa'),('yo-NG','Yorùbá'),('ig-NG','Igbo'),('ceb-PH','Cebuano'),('mi-NZ','Māori'),('sm-WS','Gagana Samoa'),('haw-US','ʻŌlelo Hawaiʻi'),('ht-HT','Kreyòl ayisyen'),('la-VA','Latina')]
+          options=''.join(f'<option value="{code}">{name}</option>' for code,name in langs)
+          s=re.sub(r'(<select id="globalLang"[^>]*>).*?(</select>)',r'\1'+options+r'\2',s,count=1,flags=re.S)
+          js='''\n<script>\nwindow.FALA_GLOBAL_LANGUAGE_COUNT='''+str(len(langs))+''';\nwindow.FALA_GLOBAL_LANGUAGES='''+repr(dict(langs)).replace("'",'"')+''';\n(function(){\n  const oldChange=window.changeLanguage;\n  window.changeLanguage=function(){\n    try{localStorage.setItem('falaLang',document.getElementById('globalLang').value)}catch(e){}\n    if(typeof oldChange==='function') oldChange();\n    const l=document.getElementById('globalLang')?.value||'en-US';\n    const supported=(typeof LESSONS!=='undefined'&&LESSONS[l]);\n    if(!supported&&typeof showToast==='function') showToast('Idioma global ativado. Voz depende do suporte do Android; lições usam pacote padrão quando necessário.');\n  };\n})();\n</script>\n'''
+          s=s.replace('</body>',js+'</body>',1)
+          s=s.replace('Fala+ Holographic AI • base estável 1.4.1','Fala+ Global Languages • Holographic AI')
+          p.write_text(s)
+          PY
+          grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT' /tmp/index.html
+          grep -Fq 'hi-IN' /tmp/index.html
+          grep -Fq 'ar-SA' /tmp/index.html
+          grep -Fq 'sw-KE' /tmp/index.html
+
+      - name: Repack APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/apkdir
+          mkdir -p /tmp/apkdir/assets
+          cp /tmp/fala-base.apk /tmp/fala-global-unsigned.apk
+          cp /tmp/index.html /tmp/apkdir/assets/index.html
+          cd /tmp/apkdir
+          zip -q -u /tmp/fala-global-unsigned.apk assets/index.html
+          cd /tmp
+          zip -q -d fala-global-unsigned.apk 'META-INF/*' || true
+
+      - name: Restore stable signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [[ ! -s .signing/falamais.keystore ]]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fala Mais, O=Fala Mais, C=BR"
+          fi
+
+      - name: Align sign and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          zipalign=$(find "$sdk_root/build-tools" -type f -name zipalign -print | sort -V | tail -n 1)
+          apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          "$zipalign" -f -p 4 /tmp/fala-global-unsigned.apk /tmp/Fala-Mais-Global-Languages.apk
+          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Global-Languages.apk
+          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-Global-Languages.apk
+          unzip -tq /tmp/Fala-Mais-Global-Languages.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-Global-Languages.apk assets/index.html | grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-global-languages
+          path: /tmp/Fala-Mais-Global-Languages.apk
+          if-no-files-found: error
+          retention-days: 14
