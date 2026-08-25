@@ -4,7 +4,7 @@ Aplicativo Android de conversação em idiomas com aulas locais e professor de I
 
 O catálogo inclui 56 idiomas com busca, exemplos de pronúncia e conversação WebRTC. O backend usa por padrão o modelo gpt-realtime-2.1 com raciocínio `low`, respostas curtas e detecção rápida do fim da fala.
 
-A versão 2.0.0 reformula o aplicativo com uma interface premium escura, esfera animada da Lumi, atalhos inteligentes e uma nova área Arcade. Ela traz cinco mini games jogáveis — Quiz relâmpago, Memória de palavras, Monte a frase, Escuta rápida e Verdadeiro ou falso — com pontuação e recordes salvos no aparelho.
+A versão 2.0.1 mantém a interface premium escura, a esfera animada da Lumi e os cinco mini games jogáveis — Quiz relâmpago, Memória de palavras, Monte a frase, Escuta rápida e Verdadeiro ou falso — com pontuação e recordes salvos no aparelho. Ela também corrige a inicialização e a saída de áudio em WebViews Android, traduz falhas de rede e detecta uma `OPENAI_API_KEY` mal preenchida antes de abrir o microfone.
 
 Lumi continua conectando, ouvindo, pensando e respondendo visualmente. Ela responde perguntas de assuntos gerais, explica, traduz e ensina por voz com baixa latência, usa `https://fala-mais-api.onrender.com` como backend padrão e preserva as correções de acesso ao microfone. O usuário informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
 
@@ -40,7 +40,7 @@ Durante a criação do Blueprint, o Render solicitará:
 - `OPENAI_API_KEY`: crie uma chave nova e informe somente no Render.
 - `FALA_MAIS_APP_TOKEN`: crie um token longo, guarde-o e use o mesmo valor no aplicativo.
 
-Depois do primeiro deploy, confirme que `https://fala-mais-api.onrender.com/health` retorna `"ok": true`. A mesma URL já está configurada como endereço padrão no APK.
+Depois do primeiro deploy, confirme que `https://fala-mais-api.onrender.com/health` retorna `"ok": true` e `"ready": true`. A mesma URL já está configurada como endereço padrão no APK. Valores como `45000` pertencem a `OPENAI_TIMEOUT_MS` e nunca devem ser usados em `OPENAI_API_KEY`.
 
 ## Configuração
 

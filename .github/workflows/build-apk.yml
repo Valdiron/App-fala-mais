@@ -90,6 +90,8 @@ jobs:
           grep -Fq 'acquireMicrophoneStream' android/app/src/main/assets/app.js
           grep -Fq 'releaseFalaMaisAudio' android/app/src/main/assets/app.js
           grep -Fq 'type: "session.update"' android/app/src/main/assets/app.js
+          grep -Fq 'event.streams?.[0] || new MediaStream([event.track])' android/app/src/main/assets/app.js
+          grep -Fq 'OPENAI_KEY_INVALID' backend/server.mjs
           grep -Fq 'Quiz relâmpago' android/app/src/main/assets/app.js
           grep -Fq 'function gamesView()' android/app/src/main/assets/app.js
           grep -Fq '.lumi-orb' android/app/src/main/assets/styles.css
@@ -160,16 +162,17 @@ jobs:
           }
           "$apksigner_path" verify --verbose --print-certs "$APK_PATH"
           badging=$("$aapt_path" dump badging "$APK_PATH")
-          [[ "$badging" == *"versionCode='13'"* ]] || {
-            echo "::error::APK versionCode is not 13"
+          [[ "$badging" == *"versionCode='14'"* ]] || {
+            echo "::error::APK versionCode is not 14"
             exit 1
           }
-          [[ "$badging" == *"versionName='2.0.0'"* ]] || {
-            echo "::error::APK versionName is not 2.0.0"
+          [[ "$badging" == *"versionName='2.0.1'"* ]] || {
+            echo "::error::APK versionName is not 2.0.1"
             exit 1
           }
           unzip -p "$APK_PATH" assets/app.js | grep -Fq 'https://fala-mais-api.onrender.com'
           unzip -p "$APK_PATH" assets/app.js | grep -Fq 'type: "session.update"'
+          unzip -p "$APK_PATH" assets/app.js | grep -Fq 'event.streams?.[0] || new MediaStream([event.track])'
           unzip -p "$APK_PATH" assets/app.js | grep -Fq 'Quiz relâmpago'
           unzip -p "$APK_PATH" assets/styles.css | grep -Fq '.lumi-orb'
           unzip -Z1 "$APK_PATH" | grep -Fqx 'assets/ai-avatar.webp'
@@ -182,7 +185,7 @@ jobs:
             echo "## APK ready to test"
             echo
             echo "- File: $APK_PATH"
-            echo "- Version: 2.0.0 (13)"
+            echo "- Version: 2.0.1 (14)"
             echo "- Size: $size_human ($size_bytes bytes)"
             echo "- ZIP integrity: passed"
             echo "- Backend tests: passed"
@@ -190,7 +193,8 @@ jobs:
             echo "- Debug signing key cache: enabled"
             echo "- APK signature verification: passed"
             echo "- Premium UI and five mini games: passed"
-            echo "- Manifest version 2.0.0 (13): passed"
+            echo "- Render key validation and Android audio fallback: passed"
+            echo "- Manifest version 2.0.1 (14): passed"
             echo "- Required APK entries: passed"
             echo "- SHA-256: $sha256"
             echo "- Open this workflow run to download the fala-mais-apk artifact."
@@ -199,7 +203,7 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-apk-v2.0.0
+          name: fala-mais-apk-v2.0.1
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14

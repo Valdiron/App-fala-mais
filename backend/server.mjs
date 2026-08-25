@@ -20,15 +20,24 @@ const allowedOrigins = new Set(
     .filter(Boolean)
 );
 
+function looksLikeOpenAiApiKey(value) {
+  return /^sk-[A-Za-z0-9_-]{17,}$/.test(value);
+}
+
 const missingConfiguration = [
   !openAiApiKey ? "OPENAI_API_KEY" : null,
   !appToken ? "FALA_MAIS_APP_TOKEN" : null
 ].filter(Boolean);
+const invalidOpenAiApiKey = Boolean(openAiApiKey) && !looksLikeOpenAiApiKey(openAiApiKey);
+const configurationReady = missingConfiguration.length === 0 && !invalidOpenAiApiKey;
 
 if (missingConfiguration.length > 0) {
   console.warn(
     "Fala+ iniciou em modo de configuração. Defina: " + missingConfiguration.join(", ") + "."
   );
+}
+if (invalidOpenAiApiKey) {
+  console.warn("Fala+ iniciou em modo de configuração. OPENAI_API_KEY não tem formato válido.");
 }
 
 const languageNames = {
@@ -158,6 +167,24 @@ function send(response, status, body, headers = {}) {
   response.end(typeof body === "string" ? body : JSON.stringify(body));
 }
 
+function sendConfigurationError(response, cors) {
+  if (missingConfiguration.length > 0) {
+    send(response, 503, {
+      error: "O backend ainda precisa das variáveis secretas do Render.",
+      code: "SERVICE_NOT_CONFIGURED"
+    }, cors);
+    return true;
+  }
+  if (invalidOpenAiApiKey) {
+    send(response, 503, {
+      error: "A variável OPENAI_API_KEY no Render está preenchida incorretamente.",
+      code: "OPENAI_KEY_INVALID"
+    }, cors);
+    return true;
+  }
+  return false;
+}
+
 async function readBody(request, maxBytes = 64 * 1024) {
   const chunks = [];
   let bytes = 0;
@@ -224,7 +251,7 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && requestUrl.pathname === "/") {
     send(response, 200, {
       ok: true,
-      ready: missingConfiguration.length === 0,
+      ready: configurationReady,
       service: "fala-mais-realtime",
       message: "Backend do Fala+ disponível.",
       health: "/health"
@@ -235,9 +262,9 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && requestUrl.pathname === "/health") {
     send(response, 200, {
       ok: true,
-      ready: missingConfiguration.length === 0,
+      ready: configurationReady,
       service: "fala-mais-realtime",
-      version: "1.2.0",
+      version: "1.2.1",
       model: realtimeModel,
       languages: Object.keys(languageNames).length,
       latencyMode: "fast"
@@ -250,13 +277,7 @@ const server = http.createServer(async (request, response) => {
       send(response, 401, { error: "Token do aplicativo inválido.", code: "APP_TOKEN_INVALID" }, cors);
       return;
     }
-    if (missingConfiguration.length > 0) {
-      send(response, 503, {
-        error: "O backend ainda precisa das variáveis secretas do Render.",
-        code: "SERVICE_NOT_CONFIGURED"
-      }, cors);
-      return;
-    }
+    if (sendConfigurationError(response, cors)) return;
     send(response, 200, {
       ok: true,
       service: "fala-mais-realtime",
@@ -277,13 +298,7 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
-  if (missingConfiguration.length > 0) {
-    send(response, 503, {
-      error: "O backend ainda precisa das variáveis secretas do Render.",
-      code: "SERVICE_NOT_CONFIGURED"
-    }, cors);
-    return;
-  }
+  if (sendConfigurationError(response, cors)) return;
 
   const address = clientAddress(request);
   if (rateLimitExceeded(address)) {
@@ -365,7 +380,16 @@ const server = http.createServer(async (request, response) => {
     const responseBody = await openAiResponse.text();
 
     if (!openAiResponse.ok) {
-      console.error("Falha ao criar sessão Realtime:", openAiResponse.status, responseBody.slice(0, 500));
+      let upstreamCode = "unknown";
+      try {
+        const upstreamError = JSON.parse(responseBody);
+        upstreamCode = upstreamError?.error?.code || upstreamError?.error?.type || upstreamCode;
+      } catch {}
+      console.error(JSON.stringify({
+        event: "openai_realtime_session_failed",
+        status: openAiResponse.status,
+        code: String(upstreamCode).slice(0, 80)
+      }));
       send(response, 502, {
         error: "Não foi possível iniciar a conversa com a IA.",
         code: openAiFailureCode(openAiResponse.status)
