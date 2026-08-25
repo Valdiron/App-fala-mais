@@ -4,7 +4,7 @@ Aplicativo Android de conversação em idiomas com aulas locais e professor de I
 
 O catálogo inclui 56 idiomas com busca, exemplos de pronúncia e conversação WebRTC. O backend usa por padrão o modelo gpt-realtime-2.1-mini, respostas curtas e detecção rápida do fim da fala.
 
-A versão 1.8.1 do APK mantém o design, a capa e o ícone oficiais do Fala+, responde automaticamente a cada fala concluída e usa `https://fala-mais-api.onrender.com` como backend padrão. Ela também corrige a permissão do microfone, gravação local, reconexão, mensagens de erro e cache de versões antigas. O usuário informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
+A versão 1.8.2 do APK mantém o design, a capa e o ícone oficiais do Fala+, responde automaticamente a cada fala concluída e usa `https://fala-mais-api.onrender.com` como backend padrão. Ela também corrige a abertura da fonte de áudio, impede disputa entre os dois modos de gravação, tenta novamente com configuração de microfone compatível e limpa a captura ao sair. O usuário informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
 
 ## APK Android
 
