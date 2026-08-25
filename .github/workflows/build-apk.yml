@@ -33,6 +33,38 @@ jobs:
           test -f android/app/build.gradle
           test -f android/app/src/main/assets/index.html
 
+      - name: Apply official Fala+ launcher icon
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p android/app/src/main/res/drawable-nodpi
+          base64 --decode mobiledata/app_icon.webp.b64 > android/app/src/main/res/drawable-nodpi/app_icon.webp
+          test -s android/app/src/main/res/drawable-nodpi/app_icon.webp
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          manifest = Path('android/app/src/main/AndroidManifest.xml')
+          text = manifest.read_text()
+          if 'android:icon=' not in text:
+              text = text.replace(
+                  'android:label="Fala+">',
+                  'android:label="Fala+"\n        android:icon="@drawable/app_icon"\n        android:roundIcon="@drawable/app_icon">'
+              )
+          manifest.write_text(text)
+
+          gradle = Path('android/app/build.gradle')
+          text = gradle.read_text()
+          text = text.replace('versionCode 1', 'versionCode 2')
+          text = text.replace("versionName '1.0.0'", "versionName '1.0.1'")
+          gradle.write_text(text)
+          PY
+
+          grep -Fq 'android:icon="@drawable/app_icon"' android/app/src/main/AndroidManifest.xml
+          grep -Fq 'android:roundIcon="@drawable/app_icon"' android/app/src/main/AndroidManifest.xml
+          grep -Fq 'versionCode 2' android/app/build.gradle
+          grep -Fq "versionName '1.0.1'" android/app/build.gradle
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -57,12 +89,13 @@ jobs:
           unzip -Z1 "$APK" | grep -Fqx 'AndroidManifest.xml'
           unzip -Z1 "$APK" | grep -Fqx 'classes.dex'
           unzip -Z1 "$APK" | grep -Fqx 'assets/index.html'
-          echo "Fala+ APK ready: $(du -h "$APK" | cut -f1)"
+          unzip -Z1 "$APK" | grep -Fq 'res/'
+          echo "Fala+ APK ready with official icon: $(du -h "$APK" | cut -f1)"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-mobile-apk
+          name: fala-mais-mobile-apk-v1.0.1
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
