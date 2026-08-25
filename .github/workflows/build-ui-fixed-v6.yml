@@ -1,4 +1,4 @@
-name: Build Fala UI Fixed V6
+name: Build Fala Games Arena
 
 on:
   push:
@@ -19,116 +19,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download compatibility APK
+      - name: Download latest UI fixed APK
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/base
-          RUN_ID=$(gh run list -R Valdiron/App-fala-mais --workflow build-compatibility-fixed-v4.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          RUN_ID=$(gh run list -R Valdiron/App-fala-mais --workflow build-ui-fixed-v6.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
           test -n "$RUN_ID"
-          gh run download "$RUN_ID" -R Valdiron/App-fala-mais -n fala-mais-compatibility-fixed-v4 -D /tmp/base
+          gh run download "$RUN_ID" -R Valdiron/App-fala-mais -n fala-mais-ui-fixed-v6 -D /tmp/base
           APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
           test -s "$APK"
           cp "$APK" /tmp/fala-base.apk
-          unzip -tq /tmp/fala-base.apk >/dev/null
-          unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
+          unzip -p "$APK" assets/index.html > /tmp/index.html
 
-      - name: Apply responsive interface fixes
+      - name: Add Games Arena
+        shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('/tmp/index.html')
-          s=p.read_text(encoding='utf-8')
-          patch=r'''<style id="falaUiFixV6">
-          html,body{width:100%;height:100%;overflow:hidden}
-          body{min-height:100svh;min-height:100dvh;align-items:stretch}
-          .app-container{width:100%;max-width:430px;height:100svh;height:100dvh;max-height:none;margin:0 auto;border-radius:0;overflow:hidden;padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
-          .screen{min-height:0;overflow:hidden}
-          #homeScreen{padding-bottom:calc(104px + env(safe-area-inset-bottom));overscroll-behavior-y:contain}
-          .ref-home{width:100%;max-width:100%;padding-left:16px;padding-right:16px;overflow-x:hidden}
-          .ref-lang{min-width:0}.ref-lang select{min-width:0;max-width:72%;text-overflow:ellipsis;white-space:nowrap;overflow:hidden}
-          .hero-card,.hero-copy,.quick-card{min-width:0}.hero-copy p,.quick-card p,.quick-card h3{overflow-wrap:anywhere}
-          .quick-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
-          .ref-bottom{left:10px;right:10px;bottom:calc(8px + env(safe-area-inset-bottom));height:70px;z-index:40}
-          .nav-item{min-width:44px;min-height:44px}.nav-voice{flex:0 0 auto}
-          .lesson-content{min-height:0;overflow-y:auto;justify-content:flex-start;padding-top:28px;padding-bottom:24px;overscroll-behavior-y:contain}
-          #lessonScreen header,#gameScreen header{flex:0 0 auto;min-height:58px}
-          #lessonScreen footer,#gameScreen footer{flex:0 0 auto;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
-          #gameScreen .lesson-content{width:100%;align-items:stretch;text-align:center}
-          #gameContentContainer{justify-content:flex-start}.game-options{width:100%;min-width:0}.game-option{width:100%;min-height:48px;white-space:normal;overflow-wrap:anywhere}
-          .ai-motion-container{height:100%;min-height:0}.ai-stage{flex:0 0 auto;padding-top:12px;padding-bottom:10px}.ai-robot-avatar{width:min(150px,42vw);height:min(125px,34vw)}
-          .chat-box{min-height:0;overflow-y:auto;overscroll-behavior-y:contain;padding-bottom:16px}.chat-bubble{max-width:86%;overflow-wrap:anywhere}
-          #aiChatScreen .ai-motion-container>div:last-child{flex:0 0 auto;padding-bottom:calc(12px + env(safe-area-inset-bottom))!important}
-          .back-btn,.audio-btn,.mic-btn,.action-btn,.hero-action,.quick-card,.game-option,.nav-item,.nav-voice{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
-          button:focus-visible,select:focus-visible{outline:2px solid #60a5fa;outline-offset:2px}
-          @media(max-width:360px){.ref-home{padding-left:12px;padding-right:12px}.ref-brand img{width:62px;height:62px}.ref-logo-text{font-size:2.05rem}.hero-card{min-height:184px;padding:16px 14px}.hero-copy{width:64%}.hero-art{right:2px;width:39%}.hero-copy h2{font-size:1.2rem}.hero-copy p{font-size:.72rem}.quick-grid{gap:8px}.quick-card{padding:9px;gap:8px}.quick-ico{width:34px;height:34px;flex:0 0 34px}.quick-card h3{font-size:.72rem}.quick-card p{font-size:.59rem}.ref-bottom{left:6px;right:6px}.nav-item{font-size:.58rem}.nav-voice{width:54px;height:54px}}
-          @media(max-width:320px){.hero-copy{width:68%}.hero-art{opacity:.82;width:35%}.quick-grid{grid-template-columns:1fr}.ref-tagline{letter-spacing:.2em}}
-          @media(max-height:700px){.ref-brand{margin-top:0}.ref-brand img{width:58px;height:58px}.ref-logo-text{font-size:2rem}.ref-tagline{margin-bottom:10px}.hero-card{min-height:166px;padding:14px;margin-bottom:10px}.hero-copy h2{font-size:1.12rem}.hero-copy p{font-size:.69rem}.hero-action{padding:9px 14px}.quick-card{min-height:82px}.ai-stage{padding-top:8px}.ai-robot-avatar{width:112px;height:92px}.ai-speech-bubble{min-height:34px;padding:8px 10px}}
-          @media(orientation:landscape) and (max-height:520px){.app-container{max-width:none}.ref-home{padding-top:8px}.ref-brand img{width:48px;height:48px}.ref-logo-text{font-size:1.8rem}.ref-tagline{display:none}.hero-card{min-height:142px}.quick-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.ref-bottom{height:60px}.nav-voice{width:48px;height:48px;margin-top:-10px}.ai-stage{display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;text-align:left}.ai-robot-avatar{width:110px;height:90px}.ai-speech-bubble{margin:0}.chat-box{padding-top:8px}}
-          </style>'''
-          if 'falaUiFixV6' not in s:
-              s=s.replace('</head>',patch+'\n</head>',1)
-          p.write_text(s,encoding='utf-8')
-          PY
-
-      - name: Add 50 plus Games Arena
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('/tmp/index.html')
-          s=p.read_text(encoding='utf-8')
-          patch=r'''<style id="falaGamesArenaV9Css">
-          #gameScreen{background:linear-gradient(180deg,rgba(245,158,11,.08),rgba(13,17,23,.98) 42%)}
-          #gameContentContainer{padding:18px!important;overflow-y:auto!important;justify-content:flex-start!important;align-items:stretch!important;gap:12px}
-          .fg-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.fg-stat,.fg-card{background:rgba(255,255,255,.05);border:1px solid rgba(245,158,11,.25);border-radius:14px}.fg-stat{padding:9px;text-align:center}.fg-stat b{display:block;font-size:1rem}.fg-stat span{font-size:.62rem;color:#94a3b8}.fg-card{padding:16px;text-align:left}.fg-badge{display:inline-block;color:#fbbf24;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);padding:5px 9px;border-radius:999px;font-size:.7rem;font-weight:800}.fg-q{font-weight:750;font-size:1.05rem;line-height:1.45;margin:12px 0 14px;color:#fff}.fg-options{display:grid;gap:9px}.fg-option{min-height:48px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#fff;padding:12px;text-align:left;font-weight:650}.fg-option.correct{border-color:#22c55e;background:rgba(34,197,94,.14)}.fg-option.wrong{border-color:#ef4444;background:rgba(239,68,68,.14)}.fg-result{margin-top:10px;padding:10px;border-radius:10px;text-align:center;font-weight:700}.fg-result.correct{color:#86efac;background:rgba(34,197,94,.1)}.fg-result.wrong{color:#fca5a5;background:rgba(239,68,68,.1)}
-          </style>
-          <script id="falaGamesArenaV9Js">
-          (function(){
-          'use strict';
-          const $=id=>document.getElementById(id);
-          const pools={
-          'en-US':[
-          ['Tradução para Good morning',['Boa tarde','Bom dia','Boa noite'],1],['Complete: Thank ____ very much',['you','me','he'],0],['O que significa Water?',['Água','Fogo','Terra'],0],['Tradução para How are you?',['Quem é você?','Como vai você?','Onde estás?'],1],['Complete: Where is ___ airport?',['the','a','an'],0],['O que significa Apple?',['Maçã','Banana','Carro'],0],['Tradução para I love programming',['Eu odeio jogos','Eu amo programar','Eu estudo inglês'],1],['Complete: Open ___ door please',['the','at','on'],0],['O que significa Book?',['Livro','Caneta','Mesa'],0],['Tradução para See you tomorrow',['Até logo','Até amanhã','Boa noite'],1]],
-          'es-ES':[['Qué significa Buenos días?',['Boa tarde','Bom dia','Boa noite'],1],['Completa: Por ________',['favor','gracias','hola'],0],['Qué significa Agua?',['Água','Comida','Fogo'],0],['Traducción de Gracias',['Por favor','Obrigado','Adeus'],1]],
-          'fr-FR':[['Que signifie Merci?',['Olá','Obrigado','Adeus'],1],['Traduction de Bonjour',['Bom dia','Boa noite','Tchau'],0]],
-          'de-DE':[['Was bedeutet Guten Morgen?',['Bom dia','Boa noite','Tchau'],0],['Bedeutung von Danke',['Por favor','Obrigado','Sim'],1]],
-          'it-IT':[['Cosa significa Buongiorno?',['Boa tarde','Bom dia','Adeus'],1]],
-          'ja-JP':[['O que significa Arigatou?',['Obrigado','Olá','Desculpa'],0]]};
-          const modes=['Quiz','Desafio rápido','Memória','Acerte de primeira','Sequência XP','Relâmpago'];
-          let num=0,xp=0,streak=0,current=null,locked=false;
-          function lang(){return $('globalLang')?.value||window.currentLang||'en-US'}
-          function screen(){let g=$('gameScreen');if(!g){g=document.createElement('div');g.id='gameScreen';g.className='screen';g.innerHTML='<header><button class="back-btn" onclick="goToHome()">←</button><span id="gameHeaderTitle" style="font-weight:700;color:#f59e0b">🎮 Arena de Mini-Games (50+)</span><div style="width:36px"></div></header><div class="lesson-content" id="gameContentContainer"></div><footer><button class="action-btn" onclick="generateNewGameChallenge()" style="background:linear-gradient(135deg,#f59e0b,#d97706)">Próximo Mini-Jogo ⚡</button></footer>';document.querySelector('.app-container')?.appendChild(g)}return g}
-          function pick(){const p=pools[lang()]||pools['en-US'];const q=p[Math.floor(Math.random()*p.length)];return [modes[(num-1)%modes.length]+': '+q[0],q[1],q[2]]}
-          window.startAIGame=function(){const g=screen();document.querySelectorAll('.screen').forEach(e=>e.classList.remove('active'));g.classList.add('active');num=0;xp=0;streak=0;window.generateNewGameChallenge()};
-          window.generateNewGameChallenge=function(){screen();const c=$('gameContentContainer');if(!c)return;locked=false;num++;current=pick();if($('gameHeaderTitle'))$('gameHeaderTitle').textContent='🎮 Mini-Game #'+num+' • Arena 50+';c.innerHTML='<div class="fg-stats"><div class="fg-stat"><b>'+num+'</b><span>JOGO</span></div><div class="fg-stat"><b>'+xp+'</b><span>XP</span></div><div class="fg-stat"><b>'+streak+'</b><span>SEQUÊNCIA</span></div></div><div class="fg-card"><span class="fg-badge">DESAFIO IA</span><div class="fg-q"></div><div class="fg-options"></div><div id="fgResult"></div></div>';c.querySelector('.fg-q').textContent=current[0];const box=c.querySelector('.fg-options');current[1].forEach((t,i)=>{const b=document.createElement('button');b.className='fg-option';b.textContent=t;b.onclick=()=>window.checkGameAnswer(i,current[2]);box.appendChild(b)})};
-          window.checkGameAnswer=function(sel,correct){if(locked)return;locked=true;const bs=[...document.querySelectorAll('.fg-option')];bs.forEach((b,i)=>{if(i===correct)b.classList.add('correct');if(i===sel&&sel!==correct)b.classList.add('wrong');b.disabled=true});const r=$('fgResult');if(sel===correct){xp+=15;streak++;r.className='fg-result correct';r.textContent='🎉 Resposta correta! +15 XP'}else{streak=0;r.className='fg-result wrong';r.textContent='❌ Resposta incorreta. A correta ficou destacada.'}};
-          screen();
-          })();
-          </script>'''
-          if 'falaGamesArenaV9Js' not in s:
-              s=s.replace('</body>',patch+'\n</body>',1)
-          p.write_text(s,encoding='utf-8')
-          PY
-          grep -Fq 'falaUiFixV6' /tmp/index.html
-          grep -Fq 'falaGamesArenaV9Js' /tmp/index.html
-          grep -Fq 'Arena 50+' /tmp/index.html
-
-      - name: Validate interface and games
-        run: |
-          set -euo pipefail
+          python3 .github/scripts/patch_games.py
+          grep -Fq falaGamesArenaV10Js /tmp/index.html
           node - <<'NODE'
-          const fs=require('fs');const s=fs.readFileSync('/tmp/index.html','utf8');
+          const fs=require('fs');
+          const s=fs.readFileSync('/tmp/index.html','utf8');
           for(const m of s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)) new Function(m[1]);
-          const ids=[...s.matchAll(/id="([^"]+)"/g)].map(m=>m[1]);
-          const dup=[...new Set(ids.filter((x,i)=>ids.indexOf(x)!==i))];
-          if(dup.length)throw new Error('Duplicate IDs: '+dup.join(','));
-          console.log('UI and Games validation OK');
+          console.log('Games Arena JavaScript OK');
           NODE
 
-      - name: Replace HTML
+      - name: Repack APK
+        shell: bash
         run: |
           set -euo pipefail
           cp /tmp/fala-base.apk /tmp/fala-unsigned.apk
@@ -138,7 +58,7 @@ jobs:
           zip -q -u /tmp/fala-unsigned.apk assets/index.html
           cd /tmp
           zip -q -d fala-unsigned.apk 'META-INF/*' || true
-          unzip -tq fala-unsigned.apk >/dev/null
+          unzip -tq /tmp/fala-unsigned.apk >/dev/null
 
       - name: Restore signing key
         uses: actions/cache@v4
@@ -147,6 +67,7 @@ jobs:
           key: fala-mais-compatible-signing-v1
 
       - name: Prepare signing key
+        shell: bash
         run: |
           set -euo pipefail
           mkdir -p .signing
@@ -154,28 +75,23 @@ jobs:
             keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Fala Mais, O=Fala Mais, C=BR'
           fi
 
-      - name: Align sign verify
+      - name: Align sign and verify
+        shell: bash
         run: |
           set -euo pipefail
           SDK=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
           ZIPALIGN=$(find "$SDK/build-tools" -type f -name zipalign | sort -V | tail -n 1)
           APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner | sort -V | tail -n 1)
-          AAPT=$(find "$SDK/build-tools" -type f -name aapt | sort -V | tail -n 1)
-          test -x "$ZIPALIGN" && test -x "$APKSIGNER" && test -x "$AAPT"
-          "$ZIPALIGN" -f -p 4 /tmp/fala-unsigned.apk /tmp/Fala-Mais-Games-Arena-V9.apk
-          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Games-Arena-V9.apk
-          "$APKSIGNER" verify --verbose --print-certs /tmp/Fala-Mais-Games-Arena-V9.apk
-          "$ZIPALIGN" -c -p 4 /tmp/Fala-Mais-Games-Arena-V9.apk
-          unzip -tq /tmp/Fala-Mais-Games-Arena-V9.apk >/dev/null
-          unzip -p /tmp/Fala-Mais-Games-Arena-V9.apk assets/index.html | grep -Fq 'falaGamesArenaV9Js'
-          "$AAPT" dump badging /tmp/Fala-Mais-Games-Arena-V9.apk | tee /tmp/badging.txt
-          grep -F "sdkVersion:'21'" /tmp/badging.txt
-          grep -F "targetSdkVersion:'35'" /tmp/badging.txt
+          "$ZIPALIGN" -f -p 4 /tmp/fala-unsigned.apk /tmp/Fala-Mais-Games-Arena-V10.apk
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Games-Arena-V10.apk
+          "$APKSIGNER" verify --verbose /tmp/Fala-Mais-Games-Arena-V10.apk
+          unzip -tq /tmp/Fala-Mais-Games-Arena-V10.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-Games-Arena-V10.apk assets/index.html | grep -Fq falaGamesArenaV10Js
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-games-arena-v9
-          path: /tmp/Fala-Mais-Games-Arena-V9.apk
+          name: fala-mais-games-arena-v10
+          path: /tmp/Fala-Mais-Games-Arena-V10.apk
           if-no-files-found: error
           retention-days: 14
