@@ -22,61 +22,70 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore current new-home APK
+      - name: Restore latest validated new-home APK
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/base
-          gh run download 32896551227 -R Valdiron/App-fala-mais -n fala-mais-new-home-ui -D /tmp/base
+          RUN_ID=$(gh run list -R Valdiron/App-fala-mais --workflow build-new-home-ui.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          test -n "$RUN_ID"
+          gh run download "$RUN_ID" -R Valdiron/App-fala-mais -n fala-mais-new-home-ui -D /tmp/base
           APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
           test -s "$APK"
           cp "$APK" /tmp/fala-base.apk
           unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
           unzip -p /tmp/fala-base.apk assets/app_icon.webp > /tmp/app_icon.webp
           unzip -p /tmp/fala-base.apk assets/assistant_robot_transparent.webp > /tmp/assistant_robot_transparent.webp
+          test -s /tmp/index.html
 
-      - name: Add global language catalog
+      - name: Apply global languages and runtime bug fixes
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
           import re, json
+
           p=Path('/tmp/index.html')
           s=p.read_text(encoding='utf-8')
 
           langs=[
-          ('af-ZA','Afrikaans'),('sq-AL','Shqip'),('am-ET','አማርኛ'),('ar-SA','العربية'),('hy-AM','Հայերեն'),('az-AZ','Azərbaycan dili'),('eu-ES','Euskara'),('be-BY','Беларуская'),('bn-BD','বাংলা'),('bs-BA','Bosanski'),('bg-BG','Български'),('my-MM','မြန်မာ'),('ca-ES','Català'),('ceb-PH','Cebuano'),('zh-CN','中文（简体）'),('zh-TW','中文（繁體）'),('zh-HK','廣東話'),('hr-HR','Hrvatski'),('cs-CZ','Čeština'),('da-DK','Dansk'),('nl-NL','Nederlands'),('en-US','English (US)'),('en-GB','English (UK)'),('en-AU','English (Australia)'),('en-IN','English (India)'),('et-EE','Eesti'),('fil-PH','Filipino'),('fi-FI','Suomi'),('fr-FR','Français'),('fr-CA','Français (Canada)'),('gl-ES','Galego'),('ka-GE','ქართული'),('de-DE','Deutsch'),('el-GR','Ελληνικά'),('gu-IN','ગુજરાતી'),('he-IL','עברית'),('hi-IN','हिन्दी'),('hu-HU','Magyar'),('is-IS','Íslenska'),('id-ID','Bahasa Indonesia'),('ga-IE','Gaeilge'),('it-IT','Italiano'),('ja-JP','日本語'),('jv-ID','Basa Jawa'),('kn-IN','ಕನ್ನಡ'),('kk-KZ','Қазақша'),('km-KH','ខ្មែរ'),('ko-KR','한국어'),('lo-LA','ລາວ'),('lv-LV','Latviešu'),('lt-LT','Lietuvių'),('mk-MK','Македонски'),('ms-MY','Bahasa Melayu'),('ml-IN','മലയാളം'),('mr-IN','मराठी'),('mn-MN','Монгол'),('ne-NP','नेपाली'),('no-NO','Norsk'),('fa-IR','فارسی'),('pl-PL','Polski'),('pt-BR','Português (Brasil)'),('pt-PT','Português (Portugal)'),('pa-IN','ਪੰਜਾਬੀ'),('ro-RO','Română'),('ru-RU','Русский'),('sr-RS','Српски'),('si-LK','සිංහල'),('sk-SK','Slovenčina'),('sl-SI','Slovenščina'),('es-ES','Español (España)'),('es-MX','Español (México)'),('es-AR','Español (Argentina)'),('es-CO','Español (Colombia)'),('sw-KE','Kiswahili'),('sv-SE','Svenska'),('ta-IN','தமிழ்'),('te-IN','తెలుగు'),('th-TH','ไทย'),('tr-TR','Türkçe'),('uk-UA','Українська'),('ur-PK','اردو'),('uz-UZ','O‘zbek'),('vi-VN','Tiếng Việt'),('cy-GB','Cymraeg'),('zu-ZA','isiZulu'),('xh-ZA','isiXhosa'),('so-SO','Soomaali'),('ha-NG','Hausa'),('yo-NG','Yorùbá'),('ig-NG','Igbo'),('mi-NZ','Māori'),('sm-WS','Gagana Samoa'),('haw-US','ʻŌlelo Hawaiʻi'),('ht-HT','Kreyòl ayisyen'),('la-VA','Latina'),('mt-MT','Malti'),('lb-LU','Lëtzebuergesch'),('mk-MK','Македонски'),('ps-AF','پښتو'),('sd-PK','سنڌي'),('tg-TJ','Тоҷикӣ'),('tk-TM','Türkmençe'),('ky-KG','Кыргызча'),('ku-TR','Kurdî'),('ckb-IQ','کوردی'),('bo-CN','བོད་སྐད་'),('dz-BT','རྫོང་ཁ'),('as-IN','অসমীয়া'),('or-IN','ଓଡ଼ିଆ'),('sa-IN','संस्कृतम्'),('kok-IN','कोंकणी'),('mai-IN','मैथिली'),('br-FR','Brezhoneg'),('co-FR','Corsu'),('fy-NL','Frysk'),('gd-GB','Gàidhlig'),('eo-001','Esperanto'),('mg-MG','Malagasy'),('ny-MW','Chichewa'),('st-ZA','Sesotho'),('tn-ZA','Setswana'),('ts-ZA','Xitsonga'),('ss-SZ','siSwati'),('ve-ZA','Tshivenda'),('rw-RW','Kinyarwanda'),('rn-BI','Kirundi'),('lg-UG','Luganda'),('sn-ZW','ChiShona'),('om-ET','Afaan Oromoo'),('ti-ET','ትግርኛ'),('ak-GH','Akan'),('ee-GH','Eʋegbe'),('bm-ML','Bamanankan'),('wo-SN','Wolof'),('ff-SN','Fulfulde'),('ln-CD','Lingála'),('kg-CD','Kikongo'),('lu-CD','Tshiluba'),('sg-CF','Sängö'),('to-TO','Lea faka-Tonga'),('fj-FJ','Vosa Vakaviti'),('ty-PF','Reo Tahiti'),('mh-MH','Kajin M̧ajeļ'),('ch-GU','Chamoru'),('bi-VU','Bislama'),('pap-CW','Papiamentu'),('qu-PE','Runasimi'),('ay-BO','Aymar aru'),('gn-PY','Avañe’ẽ'),('nah-MX','Nāhuatl'),('iu-CA','ᐃᓄᒃᑎᑐᑦ'),('kl-GL','Kalaallisut'),('se-NO','Davvisámegiella'),('fo-FO','Føroyskt'),('rm-CH','Rumantsch'),('oc-FR','Occitan'),('ast-ES','Asturianu'),('ba-RU','Башҡортса'),('tt-RU','Татарча'),('cv-RU','Чӑвашла'),('os-GE','Ирон æвзаг'),('ab-GE','Аҧсуа'),('av-RU','Авар мацӀ'),('ce-RU','Нохчийн'),('sah-RU','Саха тыла'),('ug-CN','ئۇيغۇرچە'),('mn-CN','Монгол'),('yi-001','ייִדיש')]
-
+          ('af-ZA','Afrikaans'),('sq-AL','Shqip'),('am-ET','አማርኛ'),('ar-SA','العربية'),('hy-AM','Հայերեն'),('az-AZ','Azərbaycan dili'),('eu-ES','Euskara'),('be-BY','Беларуская'),('bn-BD','বাংলা'),('bs-BA','Bosanski'),('bg-BG','Български'),('my-MM','မြန်မာ'),('ca-ES','Català'),('ceb-PH','Cebuano'),('zh-CN','中文（简体）'),('zh-TW','中文（繁體）'),('zh-HK','廣東話'),('hr-HR','Hrvatski'),('cs-CZ','Čeština'),('da-DK','Dansk'),('nl-NL','Nederlands'),('en-US','English (US)'),('en-GB','English (UK)'),('en-AU','English (Australia)'),('en-IN','English (India)'),('et-EE','Eesti'),('fil-PH','Filipino'),('fi-FI','Suomi'),('fr-FR','Français'),('fr-CA','Français (Canada)'),('gl-ES','Galego'),('ka-GE','ქართული'),('de-DE','Deutsch'),('el-GR','Ελληνικά'),('gu-IN','ગુજરાતી'),('he-IL','עברית'),('hi-IN','हिन्दी'),('hu-HU','Magyar'),('is-IS','Íslenska'),('id-ID','Bahasa Indonesia'),('ga-IE','Gaeilge'),('it-IT','Italiano'),('ja-JP','日本語'),('jv-ID','Basa Jawa'),('kn-IN','ಕನ್ನಡ'),('kk-KZ','Қазақша'),('km-KH','ខ្មែរ'),('ko-KR','한국어'),('lo-LA','ລາວ'),('lv-LV','Latviešu'),('lt-LT','Lietuvių'),('mk-MK','Македонски'),('ms-MY','Bahasa Melayu'),('ml-IN','മലയാളം'),('mr-IN','मराठी'),('mn-MN','Монгол'),('ne-NP','नेपाली'),('no-NO','Norsk'),('fa-IR','فارسی'),('pl-PL','Polski'),('pt-BR','Português (Brasil)'),('pt-PT','Português (Portugal)'),('pa-IN','ਪੰਜਾਬੀ'),('ro-RO','Română'),('ru-RU','Русский'),('sr-RS','Српски'),('si-LK','සිංහල'),('sk-SK','Slovenčina'),('sl-SI','Slovenščina'),('es-ES','Español (España)'),('es-MX','Español (México)'),('es-AR','Español (Argentina)'),('es-CO','Español (Colombia)'),('sw-KE','Kiswahili'),('sv-SE','Svenska'),('ta-IN','தமிழ்'),('te-IN','తెలుగు'),('th-TH','ไทย'),('tr-TR','Türkçe'),('uk-UA','Українська'),('ur-PK','اردو'),('uz-UZ','O‘zbek'),('vi-VN','Tiếng Việt'),('cy-GB','Cymraeg'),('zu-ZA','isiZulu'),('xh-ZA','isiXhosa'),('so-SO','Soomaali'),('ha-NG','Hausa'),('yo-NG','Yorùbá'),('ig-NG','Igbo'),('mi-NZ','Māori'),('sm-WS','Gagana Samoa'),('haw-US','ʻŌlelo Hawaiʻi'),('ht-HT','Kreyòl ayisyen'),('la-VA','Latina'),('mt-MT','Malti'),('lb-LU','Lëtzebuergesch'),('ps-AF','پښتو'),('sd-PK','سنڌي'),('tg-TJ','Тоҷикӣ'),('tk-TM','Türkmençe'),('ky-KG','Кыргызча'),('ku-TR','Kurdî'),('ckb-IQ','کوردی'),('bo-CN','བོད་སྐད་'),('dz-BT','རྫོང་ཁ'),('as-IN','অসমীয়া'),('or-IN','ଓଡ଼ିଆ'),('sa-IN','संस्कृतम्'),('kok-IN','कोंकणी'),('mai-IN','मैथिली'),('br-FR','Brezhoneg'),('co-FR','Corsu'),('fy-NL','Frysk'),('gd-GB','Gàidhlig'),('eo-001','Esperanto'),('mg-MG','Malagasy'),('ny-MW','Chichewa'),('st-ZA','Sesotho'),('tn-ZA','Setswana'),('ts-ZA','itsonga'),('ss-SZ','siSwati'),('ve-ZA','Tshivenda'),('rw-RW','Kinyarwanda'),('rn-BI','Kirundi'),('lg-UG','Luganda'),('sn-ZW','ChiShona'),('om-ET','Afaan Oromoo'),('ti-ET','ትግርኛ'),('ak-GH','Akan'),('ee-GH','Eʋegbe'),('bm-ML','Bamanankan'),('wo-SN','Wolof'),('ff-SN','Fulfulde'),('ln-CD','Lingála'),('kg-CD','Kikongo'),('lu-CD','Tshiluba'),('sg-CF','Sängö'),('to-TO','Lea faka-Tonga'),('fj-FJ','Vosa Vakaviti'),('ty-PF','Reo Tahiti'),('mh-MH','Kajin M̧ajeļ'),('ch-GU','Chamoru'),('bi-VU','Bislama'),('pap-CW','Papiamentu'),('qu-PE','Runasimi'),('ay-BO','Aymar aru'),('gn-PY','Avañe’ẽ'),('nah-MX','Nāhuatl'),('iu-CA','ᐃᓄᒃᑎᑐᑦ'),('kl-GL','Kalaallisut'),('se-NO','Davvisámegiella'),('fo-FO','Føroyskt'),('rm-CH','Rumantsch'),('oc-FR','Occitan'),('ast-ES','Asturianu'),('ba-RU','Башҡортса'),('tt-RU','Татарча'),('cv-RU','Чӑвашла'),('os-GE','Ирон æвзаг'),('ab-GE','Аҧсуа'),('av-RU','Авар мацӀ'),('ce-RU','Нохчийн'),('sah-RU','Саха тыла'),('ug-CN','ئۇيغۇرچە'),('mn-CN','Монгол'),('yi-001','ייִדיש')]
+          # Deduplicate locale codes while preserving order.
+          langs=list(dict(langs).items())
           options=''.join(f'<option value="{code}">{name}</option>' for code,name in langs)
           s,n=re.subn(r'(<select id="globalLang"[^>]*>).*?(</select>)',r'\1'+options+r'\2',s,count=1,flags=re.S)
-          if n!=1:
-              raise SystemExit('Global language selector not found')
+          if n!=1: raise SystemExit('Global language selector not found')
 
-          hook='''\n<script>\nwindow.FALA_GLOBAL_LANGUAGE_COUNT='''+str(len(langs))+''';\nwindow.FALA_GLOBAL_LANGUAGES='''+json.dumps(dict(langs),ensure_ascii=False)+''';\n(function(){\n const select=document.getElementById('globalLang');\n if(select){\n   try{const saved=localStorage.getItem('falaLang');if(saved&&[...select.options].some(o=>o.value===saved))select.value=saved;}catch(e){}\n   select.addEventListener('change',function(){try{localStorage.setItem('falaLang',select.value)}catch(e){}});\n }\n})();\n</script>\n'''
-          s=s.replace('</body>',hook+'</body>',1)
+          css='''\n<style id="runtimeFixes">\nhtml,body{overscroll-behavior:none}button,select{-webkit-tap-highlight-color:transparent}button{touch-action:manipulation}.app-container{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}.screen{min-height:0}.chat-box,.modules-list,#homeScreen{scrollbar-width:none}.chat-box::-webkit-scrollbar,.modules-list::-webkit-scrollbar,#homeScreen::-webkit-scrollbar{display:none}.is-disabled{opacity:.55;pointer-events:none}\n</style>\n'''
+          s=s.replace('</head>',css+'</head>',1)
+
+          patch=f'''\n<script id="falaRuntimeFixes">\nwindow.FALA_GLOBAL_LANGUAGE_COUNT={len(langs)};\nwindow.FALA_GLOBAL_LANGUAGES={json.dumps(dict(langs),ensure_ascii=False)};\n(function(){{\n  'use strict';\n  const $=id=>document.getElementById(id);\n  const esc=v=>String(v??'').replace(/[&<>\"']/g,c=>({{'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',"'":'&#39;'}}[c]));\n  let recognition=null;\n  let aiRecognition=null;\n  let recognitionBusy=false;\n  let aiRecognitionBusy=false;\n\n  function clearRobotState(){{const r=$('robotAvatar');if(r)r.classList.remove('listening','thinking','speaking')}}\n  function safeStop(rec){{try{{if(rec)rec.abort()}}catch(e){{}}}}\n  function setScreen(id){{document.querySelectorAll('.screen').forEach(x=>x.classList.toggle('active',x.id===id));}}\n  function normalizedLessons(){{\n    const fallback=(typeof multiLangLessons!=='undefined'&&multiLangLessons['en-US'])||[];\n    return (typeof multiLangLessons!=='undefined'&&multiLangLessons[window.currentLang||'en-US'])||fallback;\n  }}\n\n  const oldChange=window.changeLanguage;\n  window.changeLanguage=function(){{\n    const sel=$('globalLang');\n    if(sel){{window.currentLang=sel.value;try{{localStorage.setItem('falaLang',sel.value)}}catch(e){{}}}}\n    if(typeof oldChange==='function'){{try{{oldChange()}}catch(e){{console.warn(e)}}}}\n  }};\n\n  const oldStartModule=window.startModule;\n  window.startModule=function(index){{\n    const mods=normalizedLessons();\n    if(!mods.length){{alert('Nenhuma lição disponível.');return;}}\n    index=Math.max(0,Math.min(Number(index)||0,mods.length-1));\n    window.currentModuleIndex=index;window.currentStep=0;\n    if(typeof oldStartModule==='function'){{try{{oldStartModule(index);return}}catch(e){{console.warn(e)}}}}\n    setScreen('lessonScreen');\n    if(typeof window.loadLesson==='function')window.loadLesson();\n  }};\n\n  const oldHome=window.goToHome;\n  window.goToHome=function(){{\n    safeStop(recognition);safeStop(aiRecognition);recognitionBusy=false;aiRecognitionBusy=false;clearRobotState();\n    if('speechSynthesis' in window)try{{speechSynthesis.cancel()}}catch(e){{}}\n    if(typeof oldHome==='function'){{try{{oldHome();return}}catch(e){{console.warn(e)}}}}\n    setScreen('homeScreen');\n  }};\n\n  window.speakAIWithMotion=function(text){{\n    const bubble=$('aiSpeechBubble'),robot=$('robotAvatar');\n    if(bubble)bubble.textContent=String(text??'');\n    if(!('speechSynthesis' in window))return;\n    try{{speechSynthesis.cancel();}}catch(e){{}}\n    const u=new SpeechSynthesisUtterance(String(text??''));\n    u.lang=window.currentLang||$('globalLang')?.value||'en-US';\n    const voices=speechSynthesis.getVoices?.()||[];\n    const exact=voices.find(v=>v.lang===u.lang),base=u.lang.split('-')[0].toLowerCase();\n    const close=voices.find(v=>String(v.lang||'').toLowerCase().startsWith(base));\n    if(exact||close)u.voice=exact||close;\n    u.onstart=()=>{{clearRobotState();robot?.classList.add('speaking')}};\n    const done=()=>clearRobotState();u.onend=done;u.onerror=done;\n    try{{speechSynthesis.speak(u)}}catch(e){{done()}}\n  }};\n\n  window.toggleSpeechRecognition=function(){{\n    if(recognitionBusy){{safeStop(recognition);return;}}\n    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;\n    const btn=$('micBtn'),status=$('micStatus');\n    if(!SR){{if(status)status.textContent='Reconhecimento de voz indisponível neste aparelho.';return;}}\n    recognition=new SR();recognition.lang=window.currentLang||$('globalLang')?.value||'en-US';recognition.interimResults=false;recognition.maxAlternatives=1;\n    recognitionBusy=true;btn?.classList.add('listening');if(status)status.textContent='Ouvindo...';\n    const cleanup=()=>{{recognitionBusy=false;btn?.classList.remove('listening')}};\n    recognition.onresult=e=>{{\n      cleanup();const spoken=(e.results?.[0]?.[0]?.transcript||'').trim().toLocaleLowerCase();const mods=normalizedLessons();const mod=mods[Math.max(0,Math.min(window.currentModuleIndex||0,mods.length-1))];const lesson=mod?.lessons?.[Math.max(0,Math.min(window.currentStep||0,(mod?.lessons?.length||1)-1))];const expected=String(lesson?.phrase||'').trim().toLocaleLowerCase();\n      if(!expected){{if(status)status.textContent='Frase indisponível.';return;}}\n      const ok=spoken===expected||spoken.includes(expected)||expected.includes(spoken);\n      if(ok){{window.score=(Number(window.score)||0)+10;if(status){{status.textContent='✅ Perfeito! +10 XP';status.style.color='var(--success-color)'}}}}\n      else{{window.lives=Math.max(0,(Number(window.lives)||3)-1);if(status){{status.textContent='❌ Tente novamente';status.style.color='var(--error-color)'}}}}\n      try{{localStorage.setItem('falaScore',String(window.score||0))}}catch(e){{}}\n      if(typeof window.updateStats==='function')window.updateStats();\n    }};\n    recognition.onerror=e=>{{cleanup();if(status)status.textContent=(e.error==='not-allowed'?'Permita o acesso ao microfone nas configurações.':'Não consegui ouvir. Tente novamente.')}};\n    recognition.onend=cleanup;\n    try{{recognition.start()}}catch(e){{cleanup();if(status)status.textContent='Microfone ocupado. Tente novamente.'}}\n  }};\n\n  window.toggleAIChatSpeech=function(){{\n    if(aiRecognitionBusy){{safeStop(aiRecognition);return;}}\n    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;const btn=$('aiMicBtn'),status=$('aiMicStatus'),chat=$('chatBox'),robot=$('robotAvatar');\n    if(!SR){{if(status)status.textContent='Reconhecimento de voz indisponível neste aparelho.';return;}}\n    aiRecognition=new SR();aiRecognition.lang=window.currentLang||$('globalLang')?.value||'en-US';aiRecognition.interimResults=false;aiRecognition.maxAlternatives=1;\n    aiRecognitionBusy=true;btn?.classList.add('listening');clearRobotState();robot?.classList.add('listening');if(status)status.textContent='Ouvindo sua voz...';\n    const cleanup=()=>{{aiRecognitionBusy=false;btn?.classList.remove('listening');robot?.classList.remove('listening')}};\n    aiRecognition.onresult=e=>{{\n      cleanup();const text=(e.results?.[0]?.[0]?.transcript||'').trim();if(!text)return;\n      if(chat){{chat.insertAdjacentHTML('beforeend','<div class="chat-bubble user">'+esc(text)+'</div>');chat.scrollTop=chat.scrollHeight;}}\n      clearRobotState();robot?.classList.add('thinking');if(status)status.textContent='Pensando...';\n      setTimeout(()=>{{const reply='Você disse: “'+text+'”. Continue praticando — estou ouvindo!';if(chat){{chat.insertAdjacentHTML('beforeend','<div class="chat-bubble ai">'+esc(reply)+'</div>');chat.scrollTop=chat.scrollHeight;}}if(status)status.textContent='Toque para falar com o assistente';window.speakAIWithMotion(reply);}},350);\n    }};\n    aiRecognition.onerror=e=>{{cleanup();clearRobotState();if(status)status.textContent=(e.error==='not-allowed'?'Permita o acesso ao microfone nas configurações.':'Não consegui ouvir. Tente novamente.')}};\n    aiRecognition.onend=cleanup;\n    try{{aiRecognition.start()}}catch(e){{cleanup();clearRobotState();if(status)status.textContent='Microfone ocupado. Tente novamente.'}}\n  }};\n\n  document.addEventListener('DOMContentLoaded',()=>{{\n    const sel=$('globalLang');if(sel){{try{{const saved=localStorage.getItem('falaLang');if(saved&&[...sel.options].some(o=>o.value===saved))sel.value=saved}}catch(e){{}}window.currentLang=sel.value;}}\n    try{{const savedScore=Number(localStorage.getItem('falaScore'));if(Number.isFinite(savedScore)&&savedScore>=0)window.score=savedScore}}catch(e){{}}\n    if(typeof window.updateStats==='function')try{{window.updateStats()}}catch(e){{}}\n    document.querySelectorAll('button').forEach(b=>{{if(!b.type)b.type='button'}});\n  }});\n  window.addEventListener('pagehide',()=>{{safeStop(recognition);safeStop(aiRecognition);try{{speechSynthesis.cancel()}}catch(e){{}}}});\n}})();\n</script>\n'''
+          s=s.replace('</body>',patch+'</body>',1)
           p.write_text(s,encoding='utf-8')
           print('languages',len(langs))
           PY
 
-      - name: Validate global selector
+      - name: Validate HTML JavaScript and critical handlers
         shell: bash
         run: |
           set -euo pipefail
           grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT' /tmp/index.html
-          grep -Fq 'hi-IN' /tmp/index.html
-          grep -Fq 'ar-SA' /tmp/index.html
-          grep -Fq 'sw-KE' /tmp/index.html
-          grep -Fq 'qu-PE' /tmp/index.html
-          grep -Fq 'iu-CA' /tmp/index.html
+          grep -Fq 'falaRuntimeFixes' /tmp/index.html
+          grep -Fq 'toggleAIChatSpeech' /tmp/index.html
+          grep -Fq 'SpeechRecognition' /tmp/index.html
+          grep -Fq 'assistant_robot_transparent.webp' /tmp/index.html
           node - <<'NODE'
           const fs=require('fs');
           const s=fs.readFileSync('/tmp/index.html','utf8');
           const scripts=[...s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
           scripts.forEach((m,i)=>{try{new Function(m[1])}catch(e){throw new Error(`Script ${i+1}: ${e.message}`)}});
-          console.log('Global language UI validated');
+          const ids=[...s.matchAll(/id="([^"]+)"/g)].map(m=>m[1]);
+          const dup=ids.filter((x,i)=>ids.indexOf(x)!==i);
+          if(dup.length)throw new Error('Duplicate ids: '+[...new Set(dup)].join(','));
+          console.log('Runtime validated; scripts:',scripts.length,'ids:',ids.length);
           NODE
 
       - name: Repack APK
@@ -115,16 +124,16 @@ jobs:
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           zipalign=$(find "$sdk_root/build-tools" -type f -name zipalign -print | sort -V | tail -n 1)
           apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
-          "$zipalign" -f -p 4 /tmp/fala-global-home-unsigned.apk /tmp/Fala-Mais-New-Home-Global.apk
-          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-New-Home-Global.apk
-          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-New-Home-Global.apk
-          unzip -tq /tmp/Fala-Mais-New-Home-Global.apk >/dev/null
-          unzip -p /tmp/Fala-Mais-New-Home-Global.apk assets/index.html | grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT'
+          "$zipalign" -f -p 4 /tmp/fala-global-home-unsigned.apk /tmp/Fala-Mais-New-Home-Global-Fixed.apk
+          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-New-Home-Global-Fixed.apk
+          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-New-Home-Global-Fixed.apk
+          unzip -tq /tmp/Fala-Mais-New-Home-Global-Fixed.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-New-Home-Global-Fixed.apk assets/index.html | grep -Fq 'falaRuntimeFixes'
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-new-home-global
-          path: /tmp/Fala-Mais-New-Home-Global.apk
+          name: fala-mais-new-home-global-fixed
+          path: /tmp/Fala-Mais-New-Home-Global-Fixed.apk
           if-no-files-found: error
           retention-days: 14
