@@ -35,7 +35,7 @@ jobs:
           base64 --decode mobiledata/assistant_avatar_small.webp.b64 > /tmp/assistant_avatar.webp
           test -s /tmp/assistant_avatar.webp
 
-      - name: Apply holographic avatar and motion
+      - name: Apply video-inspired holographic avatar motion
         shell: bash
         run: |
           set -euo pipefail
@@ -46,28 +46,60 @@ jobs:
           s=s.replace('<img src="app_icon.webp" id="robotAvatar" class="avatar">','<img src="assistant_avatar.webp" id="robotAvatar" class="avatar assistant-main-avatar" alt="Assistente Holográfico">')
           s=s.replace('<div class="ico">🤖</div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>','<div class="ico assistant-card-avatar"><img src="assistant_avatar.webp" alt="Assistente Holográfico"></div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>')
           css=r'''
-          /* Fala+ animated holographic assistant avatar */
+          /* Video-inspired holographic assistant motion */
           .assistant-card-avatar{overflow:hidden;padding:0!important;background:radial-gradient(circle,rgba(34,211,238,.18),rgba(139,92,246,.08))!important}
           .assistant-card-avatar img{width:100%;height:100%;object-fit:cover;border-radius:14px;animation:assistantCardFloat 3.2s ease-in-out infinite;filter:drop-shadow(0 0 9px rgba(139,92,246,.65))}
-          .assistant-main-avatar{object-fit:cover!important;animation:assistantFloat 3.4s ease-in-out infinite,assistantAura 2.2s ease-in-out infinite!important;will-change:transform,filter,box-shadow}
-          .assistant-main-avatar.speaking{animation:assistantTalk .48s ease-in-out infinite alternate,assistantSpeakGlow .42s ease-in-out infinite alternate!important;border-color:#22c55e!important}
-          .ai-stage{position:relative;overflow:hidden}
+          .assistant-main-avatar{object-fit:cover!important;transform-origin:50% 70%;animation:assistantIdle 4.2s ease-in-out infinite,assistantAura 2.2s ease-in-out infinite!important;will-change:transform,filter,box-shadow}
+          .assistant-main-avatar.listening{animation:assistantListen 1.15s ease-in-out infinite,assistantListenGlow .8s ease-in-out infinite alternate!important;border-color:#38bdf8!important}
+          .assistant-main-avatar.thinking{animation:assistantThink 1.8s ease-in-out infinite,assistantAura 1.2s ease-in-out infinite!important;border-color:#a78bfa!important}
+          .assistant-main-avatar.speaking{animation:assistantTalk .62s ease-in-out infinite alternate,assistantSpeakGlow .42s ease-in-out infinite alternate!important;border-color:#22c55e!important}
+          .ai-stage{position:relative;overflow:hidden;perspective:600px}
           .ai-stage:before,.ai-stage:after{content:"";position:absolute;left:50%;transform:translateX(-50%);border-radius:50%;pointer-events:none}
           .ai-stage:before{width:190px;height:38px;bottom:48px;border:2px solid rgba(34,211,238,.26);box-shadow:0 0 24px rgba(59,130,246,.25);animation:holoRing 2.6s ease-in-out infinite}
           .ai-stage:after{width:140px;height:26px;bottom:54px;border:1px solid rgba(167,139,250,.32);animation:holoRing 2.6s ease-in-out .5s infinite}
-          @keyframes assistantFloat{0%,100%{transform:translateY(0) rotate(-1deg) scale(1)}50%{transform:translateY(-10px) rotate(1.5deg) scale(1.035)}}
+          @keyframes assistantIdle{0%,100%{transform:translate3d(0,1px,0) rotate(-1deg) scale(1)}22%{transform:translate3d(-2px,-5px,0) rotate(.5deg) scale(1.012)}50%{transform:translate3d(1px,-11px,0) rotate(1.6deg) scale(1.035)}76%{transform:translate3d(2px,-4px,0) rotate(-.3deg) scale(1.015)}}
+          @keyframes assistantListen{0%,100%{transform:translateY(-4px) rotate(-1deg) scale(1.025)}50%{transform:translateY(-8px) rotate(1deg) scale(1.055)}}
+          @keyframes assistantThink{0%,100%{transform:translateY(-5px) rotate(-2deg) scale(1.02)}50%{transform:translateY(-9px) rotate(3deg) scale(1.04)}}
+          @keyframes assistantTalk{from{transform:translateY(-5px) rotate(-1.4deg) scale(1.025)}to{transform:translateY(-10px) rotate(1.4deg) scale(1.065)}}
           @keyframes assistantAura{0%,100%{box-shadow:0 0 26px rgba(139,92,246,.58),0 0 56px rgba(34,211,238,.13)}50%{box-shadow:0 0 38px rgba(139,92,246,.82),0 0 82px rgba(34,211,238,.24)}}
-          @keyframes assistantTalk{from{transform:translateY(-4px) scale(1.02) rotate(-.8deg)}to{transform:translateY(-8px) scale(1.055) rotate(.8deg)}}
+          @keyframes assistantListenGlow{from{box-shadow:0 0 24px rgba(56,189,248,.5)}to{box-shadow:0 0 48px rgba(56,189,248,.9),0 0 78px rgba(34,211,238,.2)}}
           @keyframes assistantSpeakGlow{from{box-shadow:0 0 22px rgba(34,197,94,.55)}to{box-shadow:0 0 48px rgba(34,197,94,.95),0 0 80px rgba(34,211,238,.22)}}
-          @keyframes assistantCardFloat{0%,100%{transform:translateY(1px) scale(1.02)}50%{transform:translateY(-3px) scale(1.08)}}
+          @keyframes assistantCardFloat{0%,100%{transform:translateY(1px) rotate(-1deg) scale(1.02)}50%{transform:translateY(-4px) rotate(1deg) scale(1.08)}}
           @keyframes holoRing{0%,100%{opacity:.35;transform:translateX(-50%) scale(.82)}50%{opacity:.9;transform:translateX(-50%) scale(1.08)}}
+          @media (prefers-reduced-motion:reduce){.assistant-main-avatar,.assistant-card-avatar img,.ai-stage:before,.ai-stage:after{animation-duration:8s!important}}
           '''
           s=s.replace('</style>',css+'\n</style>',1)
+          # Hook common status text updates so the avatar reacts to listening/thinking/speaking.
+          hook=r'''
+          <script>
+          (function(){
+            function avatarState(state){
+              var a=document.getElementById('robotAvatar'); if(!a)return;
+              a.classList.remove('listening','thinking');
+              if(state)a.classList.add(state);
+            }
+            window.falaAvatarState=avatarState;
+            document.addEventListener('click',function(e){
+              if(e.target && (e.target.id==='aiMicBtn'||e.target.closest&&e.target.closest('#aiMicBtn'))){avatarState('listening');}
+            },true);
+            var obs=new MutationObserver(function(){
+              var el=document.getElementById('aiMicStatus'); if(!el)return;
+              var t=(el.textContent||'').toLowerCase();
+              if(t.includes('ouv')||t.includes('escut')||t.includes('listening')) avatarState('listening');
+              else if(t.includes('pens')||t.includes('process')||t.includes('aguarde')) avatarState('thinking');
+              else if(!t.includes('falando')&&!t.includes('speaking')) {var a=document.getElementById('robotAvatar'); if(a){a.classList.remove('listening','thinking');}}
+            });
+            document.addEventListener('DOMContentLoaded',function(){var el=document.getElementById('aiMicStatus');if(el)obs.observe(el,{childList:true,subtree:true,characterData:true});});
+          })();
+          </script>
+          '''
+          s=s.replace('</body>',hook+'\n</body>',1)
           s=s.replace('Pronto para conversar com você.','Olá! 👋 Estou pronto para ouvir você.')
           p.write_text(s)
           PY
           grep -Fq 'assistant-main-avatar' /tmp/index.html
-          grep -Fq 'Assistente Holográfico' /tmp/index.html
+          grep -Fq 'assistantListen' /tmp/index.html
+          grep -Fq 'assistantThink' /tmp/index.html
           grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT' /tmp/index.html
 
       - name: Repack APK with avatar asset
@@ -110,7 +142,7 @@ jobs:
           "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Holographic-Avatar-Motion.apk
           "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-Holographic-Avatar-Motion.apk
           unzip -tq /tmp/Fala-Mais-Holographic-Avatar-Motion.apk >/dev/null
-          unzip -p /tmp/Fala-Mais-Holographic-Avatar-Motion.apk assets/index.html | grep -Fq 'assistant-main-avatar'
+          unzip -p /tmp/Fala-Mais-Holographic-Avatar-Motion.apk assets/index.html | grep -Fq 'assistantListen'
           unzip -p /tmp/Fala-Mais-Holographic-Avatar-Motion.apk assets/assistant_avatar.webp >/dev/null
 
       - name: Upload APK
