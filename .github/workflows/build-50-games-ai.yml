@@ -1,0 +1,117 @@
+name: Build Fala+ 50+ Games AI APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'mobiledata/fala_plus_50_games_ai.html'
+      - '.github/workflows/build-50-games-ai.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: build-fala-50-games-ai-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore validated APK base
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base
+          gh run download 32884032069 -R Valdiron/App-fala-mais -n fala-mais-final-fixed -D /tmp/base
+          APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          cp mobiledata/fala_plus_50_games_ai.html /tmp/index.html
+          base64 --decode mobiledata/app_icon.webp.b64 > /tmp/app_icon.webp
+          base64 --decode mobiledata/assistant_robot_transparent.webp.b64 > /tmp/assistant_robot_transparent.webp
+          test -s /tmp/index.html
+          test -s /tmp/app_icon.webp
+          test -s /tmp/assistant_robot_transparent.webp
+
+      - name: Validate new interface
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'Arena de 50+ Mini-Jogos' /tmp/index.html
+          grep -Fq 'Assistente IA Inteligente' /tmp/index.html
+          grep -Fq 'assistant_robot_transparent.webp' /tmp/index.html
+          grep -Fq 'toggleSpeechRecognition' /tmp/index.html
+          grep -Fq 'toggleAIChatSpeech' /tmp/index.html
+          node - <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('/tmp/index.html','utf8');
+          const scripts=[...s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+          if(!scripts.length) throw new Error('No script found');
+          scripts.forEach((m,i)=>{try{new Function(m[1])}catch(e){throw new Error(`Script ${i+1}: ${e.message}`)}});
+          const funcs=new Set([...s.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(x=>x[1]));
+          const handlers=[...s.matchAll(/on(?:click|change|input|submit)="([^"]+)"/g)].map(x=>(x[1].match(/^\s*([A-Za-z_$][\w$]*)\s*\(/)||[])[1]).filter(Boolean);
+          const missing=[...new Set(handlers.filter(h=>!funcs.has(h)))];
+          if(missing.length) throw new Error('Missing handlers: '+missing.join(','));
+          console.log(`Validated ${scripts.length} scripts and ${handlers.length} handlers`);
+          NODE
+
+      - name: Repack APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/apkdir
+          mkdir -p /tmp/apkdir/assets
+          cp /tmp/fala-base.apk /tmp/fala-50-ai-unsigned.apk
+          cp /tmp/index.html /tmp/apkdir/assets/index.html
+          cp /tmp/app_icon.webp /tmp/apkdir/assets/app_icon.webp
+          cp /tmp/assistant_robot_transparent.webp /tmp/apkdir/assets/assistant_robot_transparent.webp
+          cd /tmp/apkdir
+          zip -q -u /tmp/fala-50-ai-unsigned.apk assets/index.html assets/app_icon.webp assets/assistant_robot_transparent.webp
+          cd /tmp
+          zip -q -d fala-50-ai-unsigned.apk 'META-INF/*' || true
+          unzip -tq /tmp/fala-50-ai-unsigned.apk >/dev/null
+
+      - name: Restore stable signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [[ ! -s .signing/falamais.keystore ]]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fala Mais, O=Fala Mais, C=BR"
+          fi
+
+      - name: Align sign and verify APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          zipalign=$(find "$sdk_root/build-tools" -type f -name zipalign -print | sort -V | tail -n 1)
+          apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          "$zipalign" -f -p 4 /tmp/fala-50-ai-unsigned.apk /tmp/Fala-Mais-50-Games-AI.apk
+          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-50-Games-AI.apk
+          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-50-Games-AI.apk
+          unzip -tq /tmp/Fala-Mais-50-Games-AI.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-50-Games-AI.apk assets/index.html | grep -Fq 'Arena de 50+ Mini-Jogos'
+          unzip -p /tmp/Fala-Mais-50-Games-AI.apk assets/assistant_robot_transparent.webp | grep -a -q 'ANIM'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-50-games-ai
+          path: /tmp/Fala-Mais-50-Games-AI.apk
+          if-no-files-found: error
+          retention-days: 14
