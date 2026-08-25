@@ -1,4 +1,4 @@
-name: Build Fala+ Avatar Motion APK
+name: Build Fala+ Final Fixed APK
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-fala-avatar-motion-${{ github.ref }}
+  group: build-fala-final-fixed-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download validated global languages APK
+      - name: Restore validated global APK and assets
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -34,22 +34,77 @@ jobs:
           unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
           base64 --decode mobiledata/assistant_avatar_small.webp.b64 > /tmp/assistant_avatar.webp
           base64 --decode mobiledata/assistant_robot_transparent.webp.b64 > /tmp/assistant_robot_transparent.webp
+          test -s /tmp/index.html
           test -s /tmp/assistant_avatar.webp
           test -s /tmp/assistant_robot_transparent.webp
           file /tmp/assistant_robot_transparent.webp | grep -qi 'webp'
+          grep -a -q 'ANIM' /tmp/assistant_robot_transparent.webp
+          grep -a -q 'ANMF' /tmp/assistant_robot_transparent.webp
 
-      - name: Apply transparent animated holographic robot
+      - name: Apply final fixes and animated transparent robot
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
           p=Path('/tmp/index.html')
-          s=p.read_text()
-          # Main assistant: only the moving robot, no video/background panel inside the asset.
-          s=s.replace('<img src="app_icon.webp" id="robotAvatar" class="avatar">','<img src="assistant_robot_transparent.webp" id="robotAvatar" class="avatar assistant-transparent-robot" alt="Assistente Holográfico animado">')
-          s=s.replace('<div class="ico">🤖</div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>','<div class="ico assistant-card-avatar"><img src="assistant_robot_transparent.webp" alt="Assistente Holográfico"></div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>')
+          s=p.read_text(encoding='utf-8')
+
+          # Use the transparent animated robot with a static fallback.
+          s=re.sub(
+              r'<img\s+src="app_icon\.webp"\s+id="robotAvatar"\s+class="avatar"[^>]*>',
+              '<img src="assistant_robot_transparent.webp" id="robotAvatar" class="avatar assistant-transparent-robot" alt="Assistente Holográfico animado" onerror="this.onerror=null;this.src=\'assistant_avatar.webp\'">',
+              s, count=1)
+
+          # Replace the assistant card emoji with the animated robot where possible.
+          s=s.replace(
+              '<div class="ico">🤖</div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>',
+              '<div class="ico assistant-card-avatar"><img src="assistant_robot_transparent.webp" alt="Assistente Holográfico" onerror="this.onerror=null;this.src=\'assistant_avatar.webp\'"></div><h3>Assistente Holográfico</h3><p>Converse por voz e texto.</p>')
+
+          # UI consistency: the app currently exposes 88 locale options.
+          s=s.replace('<span>6 idiomas</span>','<span>88 idiomas</span>')
+
+          # Language changes should refresh whichever learning screen is active.
+          s=re.sub(
+              r'function\s+changeLanguage\(\)\s*\{[^{}]*localStorage\.setItem\(\'falaLang\',lang\(\)\);[^{}]*\}',
+              """function changeLanguage(){
+                localStorage.setItem('falaLang',lang());
+                showToast('Idioma alterado');
+                const ls=document.getElementById('lessonScreen');
+                const gs=document.getElementById('gameScreen');
+                const ai=document.getElementById('aiChatScreen');
+                if(ls&&ls.classList.contains('active')){step=0;loadLesson();}
+                if(gs&&gs.classList.contains('active')){gameIndex=0;const a=GAME[lang()]||GAME['en-US'];if(a&&a.length)renderGame(a[0]);}
+                if(ai&&ai.classList.contains('active')){const b=document.getElementById('aiSpeechBubble');if(b)b.textContent='Idioma atualizado. Pode falar comigo.';}
+              }""",
+              s, count=1)
+
+          # Always start the game at challenge 1 instead of silently skipping it.
+          s=re.sub(
+              r'function\s+startAIGame\(\)\s*\{\s*show\(\'gameScreen\'\);\s*nav\(\'Game\'\);\s*generateNewGameChallenge\(\)\s*\}',
+              "function startAIGame(){show('gameScreen');nav('Game');gameIndex=0;generateNewGameChallenge()}",
+              s, count=1)
+          s=re.sub(
+              r'function\s+generateNewGameChallenge\(\)\s*\{\s*const\s+arr=GAME\[lang\(\)\]\|\|GAME\[\'en-US\'\];\s*gameIndex=\(gameIndex\+1\)%arr\.length;\s*renderGame\(arr\[gameIndex\]\)\s*\}',
+              "function generateNewGameChallenge(){const arr=GAME[lang()]||GAME['en-US'];if(!arr||!arr.length){showToast('Jogo indisponível');return;}const g=arr[gameIndex%arr.length];gameIndex=(gameIndex+1)%arr.length;renderGame(g)}",
+              s, count=1)
+
+          # Make the robot state deterministic while speaking.
+          s=re.sub(
+              r'function\s+setRobotSpeaking\(on,text\)\s*\{[^{}]*?\}',
+              "function setRobotSpeaking(on,text){const a=document.getElementById('robotAvatar');if(a){if(on){a.classList.remove('listening','thinking');a.classList.add('speaking')}else{a.classList.remove('speaking')}}const b=document.getElementById('aiSpeechBubble');if(text&&b)b.textContent=text}",
+              s, count=1)
+
+          # While the assistant is preparing a reply, show a real thinking state.
+          s=re.sub(
+              r'async\s+function\s+askAI\(m\)\s*\{\s*addBubble\(\'user\',m\);\s*const\s+loading=addBubble\(\'ai\',\'Pensando\.\.\.\'\);\s*const\s+reply=localReply\(m\);\s*await\s+new\s+Promise\(r=>setTimeout\(r,250\)\);\s*loading\.textContent=reply;\s*speak\(reply,lang\(\)\)\s*\}',
+              "async function askAI(m){addBubble('user',m);const loading=addBubble('ai','Pensando...');if(window.falaAvatarState)window.falaAvatarState('thinking');try{const reply=localReply(m);await new Promise(r=>setTimeout(r,250));loading.textContent=reply;if(window.falaAvatarState)window.falaAvatarState('');speak(reply,lang())}catch(e){loading.textContent='Não consegui responder agora. Tente novamente.';if(window.falaAvatarState)window.falaAvatarState('');}}",
+              s, count=1)
+
           css=r'''
+          /* Final transparent holographic assistant */
           .assistant-card-avatar{overflow:visible!important;padding:0!important;background:transparent!important;box-shadow:none!important}
           .assistant-card-avatar img{width:58px;height:58px;object-fit:contain;border-radius:0;filter:drop-shadow(0 8px 12px rgba(0,0,0,.28)) drop-shadow(0 0 10px rgba(59,130,246,.45));animation:assistantCardFloat 3s ease-in-out infinite}
           .assistant-transparent-robot{width:230px!important;height:190px!important;max-width:82vw!important;border:0!important;border-radius:0!important;object-fit:contain!important;background:transparent!important;box-shadow:none!important;filter:drop-shadow(0 16px 20px rgba(0,0,0,.3)) drop-shadow(0 0 20px rgba(59,130,246,.42));animation:robotStageFloat 3.8s ease-in-out infinite!important;will-change:transform,filter}
@@ -69,51 +124,99 @@ jobs:
           @keyframes holoRing{0%,100%{opacity:.32;transform:translateX(-50%) scale(.82)}50%{opacity:.9;transform:translateX(-50%) scale(1.08)}}
           '''
           s=s.replace('</style>',css+'\n</style>',1)
+
           hook=r'''
           <script>
           (function(){
+            let lessonWatchdog=null,chatWatchdog=null;
             function avatarState(state){
-              var a=document.getElementById('robotAvatar'); if(!a)return;
+              const a=document.getElementById('robotAvatar');if(!a)return;
               a.classList.remove('listening','thinking');
               if(state)a.classList.add(state);
             }
             window.falaAvatarState=avatarState;
+
+            function recover(kind){
+              const id=kind==='chat'?'aiMicBtn':'micBtn';
+              const btn=document.getElementById(id);
+              if(btn&&btn.classList.contains('listening')){
+                btn.classList.remove('listening');
+                avatarState('');
+                const bubble=document.getElementById('aiSpeechBubble');
+                if(kind==='chat'&&bubble)bubble.textContent='Não ouvi uma resposta. Toque no microfone e tente novamente.';
+                try{if(kind==='chat')chatListening=false;else lessonListening=false;}catch(e){}
+              }
+            }
+
             document.addEventListener('click',function(e){
-              if(e.target && (e.target.id==='aiMicBtn'||(e.target.closest&&e.target.closest('#aiMicBtn')))) avatarState('listening');
+              const t=e.target;
+              if(!t)return;
+              if(t.id==='aiMicBtn'||(t.closest&&t.closest('#aiMicBtn'))){
+                avatarState('listening');clearTimeout(chatWatchdog);chatWatchdog=setTimeout(()=>recover('chat'),12000);
+              }
+              if(t.id==='micBtn'||(t.closest&&t.closest('#micBtn'))){
+                clearTimeout(lessonWatchdog);lessonWatchdog=setTimeout(()=>recover('lesson'),12000);
+              }
             },true);
-            var obs=new MutationObserver(function(){
-              var el=document.getElementById('aiMicStatus'); if(!el)return;
-              var t=(el.textContent||'').toLowerCase();
-              if(t.includes('ouv')||t.includes('escut')||t.includes('listening')) avatarState('listening');
-              else if(t.includes('pens')||t.includes('process')||t.includes('aguarde')) avatarState('thinking');
-              else if(!t.includes('falando')&&!t.includes('speaking')){var a=document.getElementById('robotAvatar');if(a)a.classList.remove('listening','thinking');}
-            });
-            document.addEventListener('DOMContentLoaded',function(){var el=document.getElementById('aiMicStatus');if(el)obs.observe(el,{childList:true,subtree:true,characterData:true});});
+
+            function observeStatus(){
+              const el=document.getElementById('aiSpeechBubble');
+              if(!el)return;
+              new MutationObserver(function(){
+                const t=(el.textContent||'').toLowerCase();
+                if(t.includes('ouv')||t.includes('escut')||t.includes('listening'))avatarState('listening');
+                else if(t.includes('pens')||t.includes('process')||t.includes('aguarde'))avatarState('thinking');
+                else if(!t.includes('falando')&&!t.includes('speaking')){
+                  const a=document.getElementById('robotAvatar');if(a&&!a.classList.contains('speaking'))avatarState('');
+                }
+              }).observe(el,{childList:true,subtree:true,characterData:true});
+            }
+            if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',observeStatus);else observeStatus();
           })();
           </script>
           '''
           s=s.replace('</body>',hook+'\n</body>',1)
-          s=s.replace('Pronto para conversar com você.','Olá! 👋 Estou pronto para ouvir você.')
-          p.write_text(s)
+          p.write_text(s,encoding='utf-8')
           PY
+
+      - name: Validate interface and JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
           grep -Fq 'assistant-transparent-robot' /tmp/index.html
           grep -Fq 'assistant_robot_transparent.webp' /tmp/index.html
           grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT' /tmp/index.html
+          grep -Fq 'aiSpeechBubble' /tmp/index.html
+          grep -Fq '88 idiomas' /tmp/index.html || true
+          node - <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('/tmp/index.html','utf8');
+          const scripts=[...s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+          if(!scripts.length) throw new Error('No scripts found');
+          scripts.forEach((m,i)=>{try{new Function(m[1])}catch(e){throw new Error(`Script ${i+1}: ${e.message}`)}});
+          const funcs=new Set([...s.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(x=>x[1]));
+          const handlers=[...s.matchAll(/on(?:click|change|input|submit)="([^"]+)"/g)]
+            .map(x=>(x[1].match(/^\s*([A-Za-z_$][\w$]*)\s*\(/)||[])[1]).filter(Boolean);
+          const missing=[...new Set(handlers.filter(h=>!funcs.has(h)))];
+          if(missing.length) throw new Error('Missing handlers: '+missing.join(','));
+          console.log(`Validated ${scripts.length} scripts and ${handlers.length} inline handlers`);
+          NODE
 
-      - name: Repack APK with transparent animated robot
+      - name: Repack APK
         shell: bash
         run: |
           set -euo pipefail
           rm -rf /tmp/apkdir
           mkdir -p /tmp/apkdir/assets
-          cp /tmp/fala-base.apk /tmp/fala-avatar-unsigned.apk
+          cp /tmp/fala-base.apk /tmp/fala-final-unsigned.apk
           cp /tmp/index.html /tmp/apkdir/assets/index.html
           cp /tmp/assistant_avatar.webp /tmp/apkdir/assets/assistant_avatar.webp
           cp /tmp/assistant_robot_transparent.webp /tmp/apkdir/assets/assistant_robot_transparent.webp
           cd /tmp/apkdir
-          zip -q -u /tmp/fala-avatar-unsigned.apk assets/index.html assets/assistant_avatar.webp assets/assistant_robot_transparent.webp
+          zip -q -u /tmp/fala-final-unsigned.apk assets/index.html assets/assistant_avatar.webp assets/assistant_robot_transparent.webp
           cd /tmp
-          zip -q -d fala-avatar-unsigned.apk 'META-INF/*' || true
+          zip -q -d fala-final-unsigned.apk 'META-INF/*' || true
+          unzip -tq /tmp/fala-final-unsigned.apk >/dev/null
 
       - name: Restore stable signing key
         uses: actions/cache@v4
@@ -130,24 +233,24 @@ jobs:
             keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fala Mais, O=Fala Mais, C=BR"
           fi
 
-      - name: Align sign and verify
+      - name: Align sign and verify final APK
         shell: bash
         run: |
           set -euo pipefail
           sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           zipalign=$(find "$sdk_root/build-tools" -type f -name zipalign -print | sort -V | tail -n 1)
           apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
-          "$zipalign" -f -p 4 /tmp/fala-avatar-unsigned.apk /tmp/Fala-Mais-Holographic-Robot-Transparent.apk
-          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Holographic-Robot-Transparent.apk
-          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-Holographic-Robot-Transparent.apk
-          unzip -tq /tmp/Fala-Mais-Holographic-Robot-Transparent.apk >/dev/null
-          unzip -p /tmp/Fala-Mais-Holographic-Robot-Transparent.apk assets/index.html | grep -Fq 'assistant-transparent-robot'
-          unzip -p /tmp/Fala-Mais-Holographic-Robot-Transparent.apk assets/assistant_robot_transparent.webp >/dev/null
+          "$zipalign" -f -p 4 /tmp/fala-final-unsigned.apk /tmp/Fala-Mais-Final-Fixed.apk
+          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Final-Fixed.apk
+          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-Final-Fixed.apk
+          unzip -tq /tmp/Fala-Mais-Final-Fixed.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-Final-Fixed.apk assets/index.html | grep -Fq 'assistant-transparent-robot'
+          unzip -p /tmp/Fala-Mais-Final-Fixed.apk assets/assistant_robot_transparent.webp | grep -a -q 'ANIM'
 
-      - name: Upload APK
+      - name: Upload final APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-holographic-robot-transparent
-          path: /tmp/Fala-Mais-Holographic-Robot-Transparent.apk
+          name: fala-mais-final-fixed
+          path: /tmp/Fala-Mais-Final-Fixed.apk
           if-no-files-found: error
           retention-days: 14
