@@ -1,0 +1,130 @@
+name: Build Fala+ New Home Global APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-new-home-global.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: build-fala-new-home-global-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore current new-home APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base
+          gh run download 32896551227 -R Valdiron/App-fala-mais -n fala-mais-new-home-ui -D /tmp/base
+          APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
+          unzip -p /tmp/fala-base.apk assets/app_icon.webp > /tmp/app_icon.webp
+          unzip -p /tmp/fala-base.apk assets/assistant_robot_transparent.webp > /tmp/assistant_robot_transparent.webp
+
+      - name: Add global language catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, json
+          p=Path('/tmp/index.html')
+          s=p.read_text(encoding='utf-8')
+
+          langs=[
+          ('af-ZA','Afrikaans'),('sq-AL','Shqip'),('am-ET','አማርኛ'),('ar-SA','العربية'),('hy-AM','Հայերեն'),('az-AZ','Azərbaycan dili'),('eu-ES','Euskara'),('be-BY','Беларуская'),('bn-BD','বাংলা'),('bs-BA','Bosanski'),('bg-BG','Български'),('my-MM','မြန်မာ'),('ca-ES','Català'),('ceb-PH','Cebuano'),('zh-CN','中文（简体）'),('zh-TW','中文（繁體）'),('zh-HK','廣東話'),('hr-HR','Hrvatski'),('cs-CZ','Čeština'),('da-DK','Dansk'),('nl-NL','Nederlands'),('en-US','English (US)'),('en-GB','English (UK)'),('en-AU','English (Australia)'),('en-IN','English (India)'),('et-EE','Eesti'),('fil-PH','Filipino'),('fi-FI','Suomi'),('fr-FR','Français'),('fr-CA','Français (Canada)'),('gl-ES','Galego'),('ka-GE','ქართული'),('de-DE','Deutsch'),('el-GR','Ελληνικά'),('gu-IN','ગુજરાતી'),('he-IL','עברית'),('hi-IN','हिन्दी'),('hu-HU','Magyar'),('is-IS','Íslenska'),('id-ID','Bahasa Indonesia'),('ga-IE','Gaeilge'),('it-IT','Italiano'),('ja-JP','日本語'),('jv-ID','Basa Jawa'),('kn-IN','ಕನ್ನಡ'),('kk-KZ','Қазақша'),('km-KH','ខ្មែរ'),('ko-KR','한국어'),('lo-LA','ລາວ'),('lv-LV','Latviešu'),('lt-LT','Lietuvių'),('mk-MK','Македонски'),('ms-MY','Bahasa Melayu'),('ml-IN','മലയാളം'),('mr-IN','मराठी'),('mn-MN','Монгол'),('ne-NP','नेपाली'),('no-NO','Norsk'),('fa-IR','فارسی'),('pl-PL','Polski'),('pt-BR','Português (Brasil)'),('pt-PT','Português (Portugal)'),('pa-IN','ਪੰਜਾਬੀ'),('ro-RO','Română'),('ru-RU','Русский'),('sr-RS','Српски'),('si-LK','සිංහල'),('sk-SK','Slovenčina'),('sl-SI','Slovenščina'),('es-ES','Español (España)'),('es-MX','Español (México)'),('es-AR','Español (Argentina)'),('es-CO','Español (Colombia)'),('sw-KE','Kiswahili'),('sv-SE','Svenska'),('ta-IN','தமிழ்'),('te-IN','తెలుగు'),('th-TH','ไทย'),('tr-TR','Türkçe'),('uk-UA','Українська'),('ur-PK','اردو'),('uz-UZ','O‘zbek'),('vi-VN','Tiếng Việt'),('cy-GB','Cymraeg'),('zu-ZA','isiZulu'),('xh-ZA','isiXhosa'),('so-SO','Soomaali'),('ha-NG','Hausa'),('yo-NG','Yorùbá'),('ig-NG','Igbo'),('mi-NZ','Māori'),('sm-WS','Gagana Samoa'),('haw-US','ʻŌlelo Hawaiʻi'),('ht-HT','Kreyòl ayisyen'),('la-VA','Latina'),('mt-MT','Malti'),('lb-LU','Lëtzebuergesch'),('mk-MK','Македонски'),('ps-AF','پښتو'),('sd-PK','سنڌي'),('tg-TJ','Тоҷикӣ'),('tk-TM','Türkmençe'),('ky-KG','Кыргызча'),('ku-TR','Kurdî'),('ckb-IQ','کوردی'),('bo-CN','བོད་སྐད་'),('dz-BT','རྫོང་ཁ'),('as-IN','অসমীয়া'),('or-IN','ଓଡ଼ିଆ'),('sa-IN','संस्कृतम्'),('kok-IN','कोंकणी'),('mai-IN','मैथिली'),('br-FR','Brezhoneg'),('co-FR','Corsu'),('fy-NL','Frysk'),('gd-GB','Gàidhlig'),('eo-001','Esperanto'),('mg-MG','Malagasy'),('ny-MW','Chichewa'),('st-ZA','Sesotho'),('tn-ZA','Setswana'),('ts-ZA','Xitsonga'),('ss-SZ','siSwati'),('ve-ZA','Tshivenda'),('rw-RW','Kinyarwanda'),('rn-BI','Kirundi'),('lg-UG','Luganda'),('sn-ZW','ChiShona'),('om-ET','Afaan Oromoo'),('ti-ET','ትግርኛ'),('ak-GH','Akan'),('ee-GH','Eʋegbe'),('bm-ML','Bamanankan'),('wo-SN','Wolof'),('ff-SN','Fulfulde'),('ln-CD','Lingála'),('kg-CD','Kikongo'),('lu-CD','Tshiluba'),('sg-CF','Sängö'),('to-TO','Lea faka-Tonga'),('fj-FJ','Vosa Vakaviti'),('ty-PF','Reo Tahiti'),('mh-MH','Kajin M̧ajeļ'),('ch-GU','Chamoru'),('bi-VU','Bislama'),('pap-CW','Papiamentu'),('qu-PE','Runasimi'),('ay-BO','Aymar aru'),('gn-PY','Avañe’ẽ'),('nah-MX','Nāhuatl'),('iu-CA','ᐃᓄᒃᑎᑐᑦ'),('kl-GL','Kalaallisut'),('se-NO','Davvisámegiella'),('fo-FO','Føroyskt'),('rm-CH','Rumantsch'),('oc-FR','Occitan'),('ast-ES','Asturianu'),('ba-RU','Башҡортса'),('tt-RU','Татарча'),('cv-RU','Чӑвашла'),('os-GE','Ирон æвзаг'),('ab-GE','Аҧсуа'),('av-RU','Авар мацӀ'),('ce-RU','Нохчийн'),('sah-RU','Саха тыла'),('ug-CN','ئۇيغۇرچە'),('mn-CN','Монгол'),('yi-001','ייִדיש')]
+
+          options=''.join(f'<option value="{code}">{name}</option>' for code,name in langs)
+          s,n=re.subn(r'(<select id="globalLang"[^>]*>).*?(</select>)',r'\1'+options+r'\2',s,count=1,flags=re.S)
+          if n!=1:
+              raise SystemExit('Global language selector not found')
+
+          hook='''\n<script>\nwindow.FALA_GLOBAL_LANGUAGE_COUNT='''+str(len(langs))+''';\nwindow.FALA_GLOBAL_LANGUAGES='''+json.dumps(dict(langs),ensure_ascii=False)+''';\n(function(){\n const select=document.getElementById('globalLang');\n if(select){\n   try{const saved=localStorage.getItem('falaLang');if(saved&&[...select.options].some(o=>o.value===saved))select.value=saved;}catch(e){}\n   select.addEventListener('change',function(){try{localStorage.setItem('falaLang',select.value)}catch(e){}});\n }\n})();\n</script>\n'''
+          s=s.replace('</body>',hook+'</body>',1)
+          p.write_text(s,encoding='utf-8')
+          print('languages',len(langs))
+          PY
+
+      - name: Validate global selector
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT' /tmp/index.html
+          grep -Fq 'hi-IN' /tmp/index.html
+          grep -Fq 'ar-SA' /tmp/index.html
+          grep -Fq 'sw-KE' /tmp/index.html
+          grep -Fq 'qu-PE' /tmp/index.html
+          grep -Fq 'iu-CA' /tmp/index.html
+          node - <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('/tmp/index.html','utf8');
+          const scripts=[...s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)];
+          scripts.forEach((m,i)=>{try{new Function(m[1])}catch(e){throw new Error(`Script ${i+1}: ${e.message}`)}});
+          console.log('Global language UI validated');
+          NODE
+
+      - name: Repack APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/apkdir && mkdir -p /tmp/apkdir/assets
+          cp /tmp/fala-base.apk /tmp/fala-global-home-unsigned.apk
+          cp /tmp/index.html /tmp/apkdir/assets/index.html
+          cp /tmp/app_icon.webp /tmp/apkdir/assets/app_icon.webp
+          cp /tmp/assistant_robot_transparent.webp /tmp/apkdir/assets/assistant_robot_transparent.webp
+          cd /tmp/apkdir
+          zip -q -u /tmp/fala-global-home-unsigned.apk assets/index.html assets/app_icon.webp assets/assistant_robot_transparent.webp
+          cd /tmp
+          zip -q -d fala-global-home-unsigned.apk 'META-INF/*' || true
+
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [[ ! -s .signing/falamais.keystore ]]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fala Mais, O=Fala Mais, C=BR"
+          fi
+
+      - name: Align sign and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          zipalign=$(find "$sdk_root/build-tools" -type f -name zipalign -print | sort -V | tail -n 1)
+          apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          "$zipalign" -f -p 4 /tmp/fala-global-home-unsigned.apk /tmp/Fala-Mais-New-Home-Global.apk
+          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-New-Home-Global.apk
+          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-New-Home-Global.apk
+          unzip -tq /tmp/Fala-Mais-New-Home-Global.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-New-Home-Global.apk assets/index.html | grep -Fq 'FALA_GLOBAL_LANGUAGE_COUNT'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-new-home-global
+          path: /tmp/Fala-Mais-New-Home-Global.apk
+          if-no-files-found: error
+          retention-days: 14
