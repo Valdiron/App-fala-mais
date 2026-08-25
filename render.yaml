@@ -20,7 +20,7 @@ services:
       - key: ALLOWED_ORIGINS
         value: null,https://appassets.androidplatform.net,http://localhost:4173
       - key: OPENAI_REALTIME_MODEL
-        value: gpt-realtime-2.1-mini
+        value: gpt-realtime-2.1
       - key: OPENAI_REALTIME_VOICE
         value: marin
       - key: OPENAI_TIMEOUT_MS

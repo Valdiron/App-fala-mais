@@ -2,9 +2,9 @@
 
 Aplicativo Android de conversação em idiomas com aulas locais e professor de IA por voz ao vivo.
 
-O catálogo inclui 56 idiomas com busca, exemplos de pronúncia e conversação WebRTC. O backend usa por padrão o modelo gpt-realtime-2.1-mini, respostas curtas e detecção rápida do fim da fala.
+O catálogo inclui 56 idiomas com busca, exemplos de pronúncia e conversação WebRTC. O backend usa por padrão o modelo gpt-realtime-2.1 com raciocínio `low`, respostas curtas e detecção rápida do fim da fala.
 
-A versão 1.8.2 do APK mantém o design, a capa e o ícone oficiais do Fala+, responde automaticamente a cada fala concluída e usa `https://fala-mais-api.onrender.com` como backend padrão. Ela também corrige a abertura da fonte de áudio, impede disputa entre os dois modos de gravação, tenta novamente com configuração de microfone compatível e limpa a captura ao sair. O usuário informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
+A versão 1.9.0 do APK apresenta Lumi, uma professora de IA com avatar animado que conecta, ouve, pensa e responde visualmente. Ela responde perguntas de assuntos gerais, explica, traduz e ensina por voz com baixa latência, usa `https://fala-mais-api.onrender.com` como backend padrão e preserva as correções de acesso ao microfone. O usuário informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
 
 ## APK Android
 
