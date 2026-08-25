@@ -1,0 +1,98 @@
+name: Build Fala Login V11
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/build-login-v11.yml
+      - .github/scripts/patch_login.py
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download latest Games Arena APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base
+          RUN_ID=$(gh run list -R Valdiron/App-fala-mais --workflow build-ui-fixed-v6.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          test -n "$RUN_ID"
+          gh run download "$RUN_ID" -R Valdiron/App-fala-mais -n fala-mais-games-arena-v10 -D /tmp/base
+          APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          unzip -p "$APK" assets/index.html > /tmp/index.html
+
+      - name: Add Login UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/patch_login.py
+          grep -Fq falaLoginV11Js /tmp/index.html
+          node - <<'NODE'
+          const fs=require('fs');
+          const s=fs.readFileSync('/tmp/index.html','utf8');
+          for(const m of s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)) new Function(m[1]);
+          console.log('Login JavaScript OK');
+          NODE
+
+      - name: Repack APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp /tmp/fala-base.apk /tmp/fala-unsigned.apk
+          mkdir -p /tmp/update/assets
+          cp /tmp/index.html /tmp/update/assets/index.html
+          cd /tmp/update
+          zip -q -u /tmp/fala-unsigned.apk assets/index.html
+          cd /tmp
+          zip -q -d fala-unsigned.apk 'META-INF/*' || true
+          unzip -tq /tmp/fala-unsigned.apk >/dev/null
+
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [ ! -s .signing/falamais.keystore ]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Fala Mais, O=Fala Mais, C=BR'
+          fi
+
+      - name: Align sign and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
+          ZIPALIGN=$(find "$SDK/build-tools" -type f -name zipalign | sort -V | tail -n 1)
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          "$ZIPALIGN" -f -p 4 /tmp/fala-unsigned.apk /tmp/Fala-Mais-Login-V11.apk
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Login-V11.apk
+          "$APKSIGNER" verify --verbose /tmp/Fala-Mais-Login-V11.apk
+          unzip -tq /tmp/Fala-Mais-Login-V11.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-Login-V11.apk assets/index.html | grep -Fq falaLoginV11Js
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-login-v11
+          path: /tmp/Fala-Mais-Login-V11.apk
+          if-no-files-found: error
+          retention-days: 14
