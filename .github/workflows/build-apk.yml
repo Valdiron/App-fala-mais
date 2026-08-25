@@ -1,4 +1,4 @@
-name: Build Fala+ AI Hub APK
+name: Build Fala+ Stable APK
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: build-fala-ai-hub-${{ github.ref }}
+  group: build-fala-stable-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -32,139 +32,143 @@ jobs:
           test -f android/app/build.gradle
           test -f android/app/src/main/assets/index.html
 
-      - name: Apply Android compatibility and version
+      - name: Apply Android compatibility fixes
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p android/app/src/main/res/drawable-nodpi
           base64 --decode mobiledata/app_icon.webp.b64 > android/app/src/main/res/drawable-nodpi/app_icon.webp
           cp android/app/src/main/res/drawable-nodpi/app_icon.webp android/app/src/main/assets/app_icon.webp
-
           python3 - <<'PY'
           from pathlib import Path
           import re
-
-          gradle = Path('android/app/build.gradle')
-          s = gradle.read_text()
-          s = re.sub(r'minSdk\s+\d+', 'minSdk 21', s)
-          s = re.sub(r'targetSdk\s+\d+', 'targetSdk 35', s)
-          s = re.sub(r'versionCode\s+\d+', 'versionCode 8', s)
-          s = re.sub(r"versionName\s+'[^']+'", "versionName '1.4.0'", s)
+          gradle=Path('android/app/build.gradle')
+          s=gradle.read_text()
+          s=re.sub(r'minSdk\s+\d+','minSdk 21',s)
+          s=re.sub(r'targetSdk\s+\d+','targetSdk 35',s)
+          s=re.sub(r'versionCode\s+\d+','versionCode 9',s)
+          s=re.sub(r"versionName\s+'[^']+'","versionName '1.4.1'",s)
           gradle.write_text(s)
 
-          manifest = Path('android/app/src/main/AndroidManifest.xml')
-          s = manifest.read_text()
+          manifest=Path('android/app/src/main/AndroidManifest.xml')
+          s=manifest.read_text()
           if 'android.hardware.microphone' not in s:
-              s = s.replace('<application', '<uses-feature android:name="android.hardware.microphone" android:required="false" />\n    <application', 1)
+              s=s.replace('<application','<uses-feature android:name="android.hardware.microphone" android:required="false" />\n    <application',1)
           if 'android:hardwareAccelerated=' not in s:
-              s = s.replace('<application', '<application\n        android:hardwareAccelerated="true"', 1)
+              s=s.replace('<application','<application\n        android:hardwareAccelerated="true"',1)
           if 'android:icon=' not in s:
-              s = s.replace('android:label="Fala+"', 'android:label="Fala+"\n        android:icon="@drawable/app_icon"\n        android:roundIcon="@drawable/app_icon"')
+              s=s.replace('android:label="Fala+"','android:label="Fala+"\n        android:icon="@drawable/app_icon"\n        android:roundIcon="@drawable/app_icon"')
           manifest.write_text(s)
 
-          java = Path('android/app/src/main/java/br/com/falamais/mobile/MainActivity.java')
+          java=Path('android/app/src/main/java/br/com/falamais/mobile/MainActivity.java')
           if java.exists():
-              s = java.read_text()
+              s=java.read_text()
               if 'import android.os.Build;' not in s:
-                  s = s.replace('import android.os.Bundle;', 'import android.os.Bundle;\nimport android.os.Build;')
-              s = s.replace(
-                  'if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {',
-                  'if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {'
-              )
+                  s=s.replace('import android.os.Bundle;','import android.os.Bundle;\nimport android.os.Build;')
+              s=s.replace('if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {','if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {')
               java.write_text(s)
           PY
 
-      - name: Apply full AI Hub interface
+      - name: Install corrected Fala+ interface
         shell: bash
         run: |
           set -euo pipefail
+          cat > android/app/src/main/assets/index.html <<'HTML'
+          <!doctype html>
+          <html lang="pt-BR">
+          <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+            <meta name="theme-color" content="#05070b">
+            <title>Fala+ AI Hub</title>
+            <style>
+              :root{--bg:#05070b;--card:#0c1119;--card2:#111826;--line:rgba(255,255,255,.08);--blue:#2f80ff;--blue2:#0e5eea;--text:#f7f9fc;--muted:#7f8ba3;--ok:#22c55e;--err:#ef4444}
+              *{box-sizing:border-box;margin:0;padding:0;font-family:Segoe UI,system-ui,-apple-system,sans-serif}html,body{width:100%;height:100%;background:var(--bg);color:var(--text)}button,input,select{font:inherit}button{cursor:pointer;-webkit-tap-highlight-color:transparent}.app{width:100%;max-width:430px;height:100dvh;margin:auto;position:relative;overflow:hidden;background:radial-gradient(circle at 50% -8%,rgba(48,94,190,.28),transparent 34%),#05070b}.screen{display:none;height:100%;flex-direction:column}.screen.active{display:flex}.scroll{overflow-y:auto;flex:1;padding-bottom:88px}.top{padding:calc(14px + env(safe-area-inset-top)) 16px 12px;display:flex;align-items:center;justify-content:space-between}.brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:1.15rem}.brand img{width:30px;height:30px;border-radius:10px}.round{width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:#101620;color:#fff}.hero{position:relative;min-height:178px;margin:0 16px 14px;border-radius:22px;padding:22px 18px;overflow:hidden;background:linear-gradient(135deg,#0b111a,#0a1424 58%,#0d1c36);border:1px solid rgba(78,134,255,.18);box-shadow:0 18px 40px rgba(0,0,0,.36)}.hero:after{content:"";position:absolute;width:184px;height:184px;right:-46px;top:14px;border-radius:50%;background:radial-gradient(circle,#3d82ff 0%,#1260e9 34%,rgba(18,96,233,.12) 70%,transparent 71%)}.hero img{position:absolute;right:23px;top:38px;width:102px;height:102px;border-radius:50%;z-index:2;box-shadow:0 0 0 10px rgba(47,128,255,.08),0 0 38px rgba(47,128,255,.35);animation:float 3.2s ease-in-out infinite}.hero h1,.hero p,.hero button{position:relative;z-index:3}.hero h1{font-size:1.55rem;line-height:1.05;max-width:215px;margin-bottom:7px}.hero p{font-size:.78rem;color:#8d98ad;line-height:1.4;max-width:210px}.hero button{margin-top:15px;padding:9px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.12);background:#0e131c;color:#fff;font-weight:700}@keyframes float{50%{transform:translateY(-7px)}}.lang{margin:0 16px 14px;padding:9px 11px;border-radius:14px;background:#0b1017;border:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.lang select{border:0;outline:0;background:#0b1017;color:#66a4ff;font-weight:700}.section{padding:0 16px;margin-top:18px}.section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.section-head h2{font-size:1rem}.section-head span{font-size:.72rem;color:var(--muted)}.grid{display:grid;grid-template-columns:1.15fr .85fr;gap:10px}.feature{min-height:112px;padding:14px;border-radius:18px;background:linear-gradient(145deg,#0e1726,#0b111a);border:1px solid rgba(70,124,255,.18)}.feature.secondary{background:linear-gradient(145deg,#111728,#0b111a)}.ico{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:1.35rem;background:linear-gradient(145deg,#1570ff,#154cb5);box-shadow:0 10px 24px rgba(34,100,230,.28);margin-bottom:12px}.feature h3{font-size:.91rem;margin-bottom:3px}.feature p{font-size:.68rem;color:#79859b;line-height:1.25}.shortcuts{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin:13px 16px 0}.shortcut{text-align:center;color:#aab4c7;font-size:.65rem}.shortcut button{width:48px;height:48px;border-radius:15px;border:1px solid var(--line);background:#0d121a;color:#fff;font-size:1.15rem;display:grid;place-items:center;margin:0 auto 6px}.tools{display:grid;grid-template-columns:1fr 1fr;gap:9px}.tool{display:flex;align-items:center;gap:9px;border:1px solid var(--line);background:#0b0f16;border-radius:15px;padding:11px}.tool .ti{width:35px;height:35px;border-radius:11px;display:grid;place-items:center;background:#111a28}.tool b{font-size:.78rem;display:block}.tool span{font-size:.62rem;color:#6f7c92}.nav{position:absolute;left:0;right:0;bottom:0;height:72px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,1fr);background:rgba(6,8,12,.97);border-top:1px solid var(--line);z-index:50}.nav button{border:0;background:transparent;color:#67748a;font-size:.62rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}.nav button b{font-size:1.15rem}.nav button.active{color:#67a4ff}.header{padding:calc(14px + env(safe-area-inset-top)) 18px 12px;display:flex;align-items:center;gap:12px;border-bottom:1px solid var(--line);background:rgba(5,7,11,.96)}.header h2{font-size:1rem;flex:1}.content{flex:1;overflow-y:auto;padding:24px 18px 96px}.tag{display:inline-block;padding:6px 14px;border-radius:999px;background:#0d1726;color:#67a4ff;border:1px solid rgba(47,128,255,.22);font-size:.75rem;font-weight:800;margin-bottom:24px}.phrase{font-size:1.75rem;font-weight:800;text-align:center;margin:18px 0 8px}.translation{text-align:center;color:#8a96aa;margin-bottom:24px}.audio{width:52px;height:52px;border-radius:50%;display:block;margin:0 auto 18px;border:1px solid rgba(47,128,255,.2);background:#0e1623;color:#67a4ff;font-size:1.25rem}.mic{width:72px;height:72px;border-radius:50%;display:block;margin:0 auto;border:0;background:linear-gradient(135deg,var(--blue),var(--blue2));color:#fff;font-size:1.65rem;box-shadow:0 12px 30px rgba(30,102,235,.28)}.mic.listening{background:linear-gradient(135deg,#ef4444,#b91c1c);animation:pulse 1.4s infinite}@keyframes pulse{70%{box-shadow:0 0 0 20px rgba(239,68,68,0)}}.status{text-align:center;margin-top:10px;color:var(--muted);font-size:.8rem}.footer{padding:12px 18px calc(84px + env(safe-area-inset-bottom));border-top:1px solid var(--line);background:#05070b}.primary{width:100%;padding:14px;border:0;border-radius:16px;background:linear-gradient(135deg,var(--blue),var(--blue2));color:#fff;font-weight:800}.game-q{font-size:1.25rem;font-weight:800;color:#67a4ff;margin-bottom:18px;text-align:center}.opts{display:grid;gap:10px}.opt{padding:14px;border-radius:15px;border:1px solid var(--line);background:var(--card);color:#fff;font-weight:700}.opt.correct{border-color:var(--ok);background:rgba(34,197,94,.12)}.opt.wrong{border-color:var(--err);background:rgba(239,68,68,.12)}.game-meta{text-align:center;color:var(--muted);font-size:.8rem;margin:16px 0}.ai-stage{text-align:center;padding:22px 16px 12px;background:linear-gradient(180deg,#0a1423,#05070b);border-bottom:1px solid var(--line)}.avatar{width:106px;height:106px;border-radius:50%;border:4px solid var(--blue);box-shadow:0 0 0 10px rgba(47,128,255,.06),0 0 35px rgba(47,128,255,.3);animation:float 3.2s ease-in-out infinite}.avatar.speaking{border-color:var(--ok);box-shadow:0 0 34px rgba(34,197,94,.72)}.ai-status{margin:10px auto 0;max-width:320px;min-height:42px;display:flex;align-items:center;justify-content:center;padding:10px 14px;border-radius:16px;background:#0b1119;border:1px solid var(--line);font-size:.82rem}.chat{flex:1;overflow-y:auto;padding:12px 12px 160px;display:flex;flex-direction:column;gap:10px}.bubble{max-width:82%;padding:11px 14px;border-radius:15px;font-size:.86rem;line-height:1.4}.bubble.ai{align-self:flex-start;background:var(--card);border:1px solid var(--line)}.bubble.user{align-self:flex-end;background:linear-gradient(135deg,var(--blue),#155ac7)}.composer{position:absolute;left:0;right:0;bottom:72px;padding:10px 12px;background:rgba(5,7,11,.98);border-top:1px solid var(--line);display:grid;grid-template-columns:48px 1fr 48px;gap:8px}.composer input{min-width:0;border:1px solid var(--line);background:#0b1017;color:#fff;border-radius:14px;padding:0 12px;outline:0}.send,.voice{border:0;border-radius:14px;background:#0f1724;color:#fff;font-size:1.1rem}.voice{background:linear-gradient(135deg,var(--blue),var(--blue2))}.toast{position:absolute;left:50%;bottom:88px;transform:translate(-50%,20px);opacity:0;background:#101722;color:#fff;border:1px solid var(--line);padding:10px 14px;border-radius:12px;font-size:.78rem;transition:.2s;z-index:100;pointer-events:none}.toast.show{opacity:1;transform:translate(-50%,0)}
+            </style>
+          </head>
+          <body>
+          <div class="app">
+            <section id="homeScreen" class="screen active"><div class="scroll"><div class="top"><div class="brand"><img src="app_icon.webp">Fala+</div><button class="round" onclick="showToast('Fala+ AI Hub v1.4.1')">•••</button></div><div class="hero"><img src="app_icon.webp"><h1>Explore o poder da IA</h1><p>Pratique idiomas com voz, jogos e um assistente inteligente.</p><button onclick="startAIChat()">Experimentar agora</button></div><div class="lang"><span>🌍 Idioma</span><select id="globalLang" onchange="changeLanguage()"><option value="en-US">English</option><option value="es-ES">Español</option><option value="fr-FR">Français</option><option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="ja-JP">日本語</option></select></div><div class="section"><div class="section-head"><h2>Ferramentas principais</h2><span>Fala+ AI</span></div><div class="grid"><div class="feature" onclick="startAIChat()"><div class="ico">🤖</div><h3>Assistente IA</h3><p>Converse por voz e texto.</p></div><div class="feature secondary" onclick="startAIGame()"><div class="ico">🎮</div><h3>Jogos IA</h3><p>Quiz e desafios rápidos.</p></div></div></div><div class="shortcuts"><div class="shortcut"><button onclick="startModule(0)">👋</button>Frases</div><div class="shortcut"><button onclick="startAIGame()">🎯</button>Quiz</div><div class="shortcut"><button onclick="startAIChat()">🎤</button>Voz</div><div class="shortcut"><button onclick="startModule(1)">🍔</button>Prática</div><div class="shortcut"><button onclick="startAIChat()">💬</button>Chat</div></div><div class="section"><div class="section-head"><h2>Aprender agora</h2><span>6 idiomas</span></div><div class="tools"><div class="tool" onclick="startModule(0)"><div class="ti">📘</div><div><b>Apresentações</b><span>Frases essenciais</span></div></div><div class="tool" onclick="startModule(1)"><div class="ti">🍽️</div><div><b>Restaurante</b><span>Situações reais</span></div></div><div class="tool" onclick="startModule(2)"><div class="ti">✈️</div><div><b>Viagem</b><span>Frases úteis</span></div></div><div class="tool" onclick="startAIGame()"><div class="ti">⚡</div><div><b>Desafio rápido</b><span>Ganhe XP</span></div></div></div></div></div></section>
+            <section id="lessonScreen" class="screen"><div class="header"><button class="round" onclick="goToHome()">←</button><h2 id="lessonTitle">Lição</h2><span>❤️ <b id="livesCount">3</b> ⭐ <b id="scoreCount">0</b></span></div><div class="content"><div style="text-align:center"><span id="scenarioTag" class="tag">Módulo</span></div><div id="phraseCard" class="phrase"></div><div id="translationCard" class="translation"></div><button class="audio" onclick="playAudio()">🔊</button><button class="mic" id="micBtn" onclick="toggleSpeechRecognition()">🎤</button><div class="status" id="micStatus">Toque no microfone e repita</div></div><div class="footer"><button class="primary" onclick="nextStep()">Próxima frase</button></div></section>
+            <section id="gameScreen" class="screen"><div class="header"><button class="round" onclick="goToHome()">←</button><h2>🎮 Arena de Jogos IA</h2><span id="gameScoreLabel">0 XP</span></div><div class="content"><div id="gameQuestion" class="game-q"></div><div id="gameOptions" class="opts"></div><div id="gameMeta" class="game-meta"></div></div><div class="footer"><button class="primary" onclick="generateNewGameChallenge()">Novo desafio ⚡</button></div></section>
+            <section id="aiChatScreen" class="screen"><div class="header"><button class="round" onclick="goToHome()">←</button><h2>Assistente Fala+</h2><button class="round" onclick="clearChat()">🗑</button></div><div class="ai-stage"><img src="app_icon.webp" id="robotAvatar" class="avatar"><div id="aiSpeechBubble" class="ai-status">Pronto para conversar com você.</div></div><div id="chatBox" class="chat"><div class="bubble ai">Olá! Escolha um idioma e fale comigo.</div></div><div class="composer"><button id="aiMicBtn" class="voice" onclick="toggleAIChatSpeech()">🎤</button><input id="chatInput" placeholder="Digite uma mensagem"><button class="send" onclick="sendTypedMessage()">➤</button></div></section>
+            <nav class="nav"><button id="navHome" class="active" onclick="goToHome()"><b>⌂</b>Início</button><button id="navLearn" onclick="startModule(0)"><b>📘</b>Aprender</button><button id="navGame" onclick="startAIGame()"><b>🎮</b>Jogos</button><button id="navAI" onclick="startAIChat()"><b>🤖</b>IA</button></nav><div id="toast" class="toast"></div>
+          </div>
+          <script>
+          const LESSONS={
+            'en-US':[{title:'Apresentações',lessons:[['Nice to meet you','Prazer em conhecê-lo'],['What is your name?','Qual é o seu nome?'],['I am from Brazil','Eu sou do Brasil']]},{title:'No Restaurante',lessons:[['The menu, please','O cardápio, por favor'],['I would like a burger','Eu gostaria de um hambúrguer'],['The check, please','A conta, por favor']]},{title:'Em Viagem',lessons:[['Where is the airport?','Onde fica o aeroporto?'],['How much is this?','Quanto custa isto?'],['I need a hotel','Eu preciso de um hotel']]}],
+            'es-ES':[{title:'Presentaciones',lessons:[['Mucho gusto','Muito prazer'],['¿Cómo te llamas?','Qual é o seu nome?'],['Soy de Brasil','Eu sou do Brasil']]},{title:'En el Restaurante',lessons:[['La carta, por favor','O cardápio, por favor'],['Quisiera una hamburguesa','Eu gostaria de um hambúrguer'],['La cuenta, por favor','A conta, por favor']]},{title:'De Viaje',lessons:[['¿Dónde está el aeropuerto?','Onde fica o aeroporto?'],['¿Cuánto cuesta esto?','Quanto custa isto?'],['Necesito un hotel','Eu preciso de um hotel']]}],
+            'fr-FR':[{title:'Présentations',lessons:[['Enchanté','Prazer em conhecê-lo'],['Comment vous appelez-vous ?','Qual é o seu nome?'],['Je viens du Brésil','Eu sou do Brasil']]},{title:'Au Restaurant',lessons:[["Le menu, s'il vous plaît",'O cardápio, por favor'],['Je voudrais un burger','Eu gostaria de um hambúrguer'],["L'addition, s'il vous plaît",'A conta, por favor']]},{title:'En Voyage',lessons:[["Où est l'aéroport ?",'Onde fica o aeroporto?'],["C'est combien ?",'Quanto custa isto?'],["J'ai besoin d'un hôtel",'Eu preciso de um hotel']]}],
+            'de-DE':[{title:'Vorstellungen',lessons:[['Schön Sie kennenzulernen','Prazer em conhecê-lo'],['Wie heißen Sie?','Qual é o seu nome?'],['Ich komme aus Brasilien','Eu sou do Brasil']]},{title:'Im Restaurant',lessons:[['Die Speisekarte, bitte','O cardápio, por favor'],['Ich hätte gern einen Burger','Eu gostaria de um hambúrguer'],['Die Rechnung, bitte','A conta, por favor']]},{title:'Auf Reisen',lessons:[['Wo ist der Flughafen?','Onde fica o aeroporto?'],['Wie viel kostet das?','Quanto custa isto?'],['Ich brauche ein Hotel','Eu preciso de um hotel']]}],
+            'it-IT':[{title:'Presentazioni',lessons:[['Piacere di conoscerti','Prazer em conhecê-lo'],['Come ti chiami?','Qual é o seu nome?'],['Vengo dal Brasile','Eu sou do Brasil']]},{title:'Al Ristorante',lessons:[['Il menu, per favore','O cardápio, por favor'],['Vorrei un hamburger','Eu gostaria de um hambúrguer'],['Il conto, per favore','A conta, por favor']]},{title:'In Viaggio',lessons:[["Dov'è l'aeroporto?",'Onde fica o aeroporto?'],['Quanto costa?','Quanto custa isto?'],['Ho bisogno di un hotel','Eu preciso de um hotel']]}],
+            'ja-JP':[{title:'自己紹介',lessons:[['はじめまして','Prazer em conhecê-lo'],['お名前は何ですか','Qual é o seu nome?'],['ブラジル出身です','Eu sou do Brasil']]},{title:'レストラン',lessons:[['メニューをお願いします','O cardápio, por favor'],['ハンバーガーをください','Eu gostaria de um hambúrguer'],['お会計をお願いします','A conta, por favor']]},{title:'旅行',lessons:[['空港はどこですか','Onde fica o aeroporto?'],['これはいくらですか','Quanto custa isto?'],['ホテルが必要です','Eu preciso de um hotel']]}]
+          };
+          const GAME={
+            'en-US':[['Como se diz “Bom dia”?',['Good morning','Good night','Thank you'],0],['Qual significa “airport”?',['Hotel','Aeroporto','Restaurante'],1],['Complete: “I ___ from Brazil”',['am','is','are'],0]],
+            'es-ES':[['Como se diz “Obrigado”?',['Gracias','Hola','Adiós'],0],['“Aeropuerto” significa:',['Hotel','Aeroporto','Comida'],1],['Complete: “Yo ___ de Brasil”',['soy','eres','es'],0]],
+            'fr-FR':[['Como se diz “Obrigado”?',['Merci','Bonjour','Bonsoir'],0],['“Aéroport” significa:',['Restaurante','Aeroporto','Hotel'],1],['Complete: “Je ___ du Brésil”',['viens','vient','venez'],0]],
+            'de-DE':[['Como se diz “Obrigado”?',['Danke','Hallo','Bitte'],0],['“Flughafen” significa:',['Aeroporto','Hotel','Menu'],0],['Complete: “Ich ___ aus Brasilien”',['komme','kommt','kommen'],0]],
+            'it-IT':[['Como se diz “Obrigado”?',['Grazie','Ciao','Prego'],0],['“Aeroporto” significa:',['Restaurante','Aeroporto','Hotel'],1],['Complete: “Io ___ dal Brasile”',['vengo','viene','venite'],0]],
+            'ja-JP':[['“ありがとう” significa:',['Obrigado','Olá','Adeus'],0],['“空港” significa:',['Aeroporto','Hotel','Restaurante'],0],['“はじめまして” significa:',['Prazer em conhecer','Boa noite','Quanto custa'],0]]
+          };
+          let moduleIndex=0,step=0,lives=3,score=Number(localStorage.getItem('falaScore')||0),gameIndex=0,lessonRec=null,chatRec=null,lessonListening=false,chatListening=false;
+          function lang(){return document.getElementById('globalLang')?.value||localStorage.getItem('falaLang')||'en-US'}
+          function changeLanguage(){localStorage.setItem('falaLang',lang());showToast('Idioma alterado')}
+          function show(id){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));document.getElementById(id)?.classList.add('active')}
+          function nav(id){['Home','Learn','Game','AI'].forEach(x=>document.getElementById('nav'+x)?.classList.toggle('active',x===id))}
+          function goToHome(){stopAllRecognition();try{window.speechSynthesis?.cancel()}catch{}show('homeScreen');nav('Home')}
+          function startModule(i){moduleIndex=Math.max(0,Math.min(2,i|0));step=0;lives=3;show('lessonScreen');nav('Learn');loadLesson();updateStats()}
+          function currentLesson(){const m=LESSONS[lang()]||LESSONS['en-US'];return {module:m[moduleIndex],item:m[moduleIndex].lessons[step]}}
+          function loadLesson(){const c=currentLesson();document.getElementById('lessonTitle').textContent=c.module.title;document.getElementById('scenarioTag').textContent=c.module.title;document.getElementById('phraseCard').textContent=c.item[0];document.getElementById('translationCard').textContent=c.item[1];setLessonStatus('Toque no microfone e repita','var(--muted)')}
+          function updateStats(){document.getElementById('livesCount').textContent=lives;document.getElementById('scoreCount').textContent=score;document.getElementById('gameScoreLabel').textContent=score+' XP';localStorage.setItem('falaScore',String(score))}
+          function speak(text,l=lang()){setRobotSpeaking(true,text);if(window.FalaMaisAndroid&&typeof window.FalaMaisAndroid.speak==='function'){window.FalaMaisAndroid.speak(String(text),String(l));setTimeout(()=>setRobotSpeaking(false,'Pronto para ouvir você.'),Math.max(1200,text.length*55));return}if('speechSynthesis'in window){try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang=l;u.rate=.95;u.onend=()=>setRobotSpeaking(false,'Pronto para ouvir você.');u.onerror=()=>setRobotSpeaking(false,'Não consegui reproduzir a voz.');speechSynthesis.speak(u)}catch{setRobotSpeaking(false)}}else setRobotSpeaking(false)}
+          function playAudio(){speak(currentLesson().item[0],lang())}
+          function normalize(t){try{return String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9\u3040-\u30ff\u3400-\u9fff\s]/g,'').replace(/\s+/g,' ').trim()}catch{return String(t).toLowerCase().trim()}}
+          function similarity(a,b){a=normalize(a);b=normalize(b);if(!a||!b)return 0;if(a.includes(b)||b.includes(a))return 1;const A=new Set(a.split(' ')),B=new Set(b.split(' '));let n=0;A.forEach(x=>{if(B.has(x))n++});return n/new Set([...A,...B]).size}
+          function setLessonStatus(t,c){const e=document.getElementById('micStatus');e.textContent=t;e.style.color=c}
+          function browserRec(l){const R=window.SpeechRecognition||window.webkitSpeechRecognition;if(!R)return null;const r=new R();r.lang=l;r.interimResults=false;r.continuous=false;r.maxAlternatives=1;return r}
+          function gradeLesson(spoken){const expected=currentLesson().item[0],ok=similarity(spoken,expected)>=.68;if(ok){score+=10;setLessonStatus('✅ Muito bom! +10 XP','var(--ok)')}else{lives=Math.max(0,lives-1);setLessonStatus('❌ Ouvi: “'+spoken+'”','var(--err)')}updateStats();if(lives<=0)setTimeout(()=>{showToast('Vidas esgotadas');goToHome()},900)}
+          function toggleSpeechRecognition(){if(lessonListening){try{lessonRec?.stop()}catch{}return}const b=document.getElementById('micBtn');lessonListening=true;b.classList.add('listening');setLessonStatus('Ouvindo...','#fff');if(window.FalaMaisAndroid&&typeof window.FalaMaisAndroid.startSpeech==='function'){window.FalaMaisAndroid.startSpeech('lesson',lang());return}lessonRec=browserRec(lang());if(!lessonRec){lessonListening=false;b.classList.remove('listening');showToast('Reconhecimento de voz indisponível');return}lessonRec.onresult=e=>gradeLesson(e.results[0][0].transcript);lessonRec.onerror=e=>setLessonStatus(e.error==='not-allowed'?'Permita o microfone.':'Não consegui ouvir.','var(--err)');lessonRec.onend=()=>{lessonListening=false;b.classList.remove('listening')};try{lessonRec.start()}catch{lessonListening=false;b.classList.remove('listening')}}
+          function nextStep(){const total=(LESSONS[lang()]||LESSONS['en-US'])[moduleIndex].lessons.length;if(step<total-1){step++;loadLesson()}else{score+=25;updateStats();showToast('🎉 Módulo concluído! +25 XP');setTimeout(goToHome,800)}}
+          function startAIGame(){show('gameScreen');nav('Game');generateNewGameChallenge()}
+          function generateNewGameChallenge(){const arr=GAME[lang()]||GAME['en-US'];gameIndex=(gameIndex+1)%arr.length;renderGame(arr[gameIndex])}
+          function renderGame(g){document.getElementById('gameQuestion').textContent=g[0];const box=document.getElementById('gameOptions');box.innerHTML='';g[1].forEach((txt,i)=>{const b=document.createElement('button');b.className='opt';b.textContent=txt;b.onclick=()=>answerGame(b,i===g[2]);box.appendChild(b)});document.getElementById('gameMeta').textContent='Escolha uma resposta'}
+          function answerGame(btn,ok){document.querySelectorAll('.opt').forEach(x=>x.disabled=true);btn.classList.add(ok?'correct':'wrong');if(ok){score+=10;showToast('✅ Correto! +10 XP')}else showToast('❌ Tente outro desafio');updateStats();setTimeout(generateNewGameChallenge,900)}
+          function startAIChat(){show('aiChatScreen');nav('AI');setRobotSpeaking(false,'Pronto para conversar com você.')}
+          function addBubble(type,text){const box=document.getElementById('chatBox'),d=document.createElement('div');d.className='bubble '+type;d.textContent=text;box.appendChild(d);box.scrollTop=box.scrollHeight;return d}
+          function localReply(m){const x=normalize(m);if(!x)return'Fale alguma coisa e eu ajudo você a praticar.';if(x.includes('hello')||x.includes('hi')||x.includes('ola'))return'Hello! Nice to meet you. What would you like to practice today?';if(x.includes('restaurant')||x.includes('restaurante'))return'Vamos praticar restaurante. Tente dizer: “Could I see the menu, please?”';if(x.includes('travel')||x.includes('airport')||x.includes('viagem'))return'Vamos praticar viagem. Pergunte: “Where is the check-in counter?”';return'Entendi: “'+m+'”. Continue com mais uma frase e eu acompanho sua prática.'}
+          async function askAI(m){addBubble('user',m);const loading=addBubble('ai','Pensando...');const reply=localReply(m);await new Promise(r=>setTimeout(r,250));loading.textContent=reply;speak(reply,lang())}
+          function sendTypedMessage(){const i=document.getElementById('chatInput'),t=i.value.trim();if(!t)return;i.value='';askAI(t)}
+          document.getElementById('chatInput').addEventListener('keydown',e=>{if(e.key==='Enter')sendTypedMessage()});
+          function toggleAIChatSpeech(){if(chatListening){try{chatRec?.stop()}catch{}return}const b=document.getElementById('aiMicBtn');chatListening=true;b.classList.add('listening');setRobotSpeaking(false,'Ouvindo...');if(window.FalaMaisAndroid&&typeof window.FalaMaisAndroid.startSpeech==='function'){window.FalaMaisAndroid.startSpeech('chat',lang());return}chatRec=browserRec(lang());if(!chatRec){chatListening=false;b.classList.remove('listening');showToast('Reconhecimento de voz indisponível');return}chatRec.onresult=e=>askAI(e.results[0][0].transcript);chatRec.onerror=()=>showToast('Não consegui ouvir');chatRec.onend=()=>{chatListening=false;b.classList.remove('listening')};try{chatRec.start()}catch{chatListening=false;b.classList.remove('listening')}}
+          function clearChat(){document.getElementById('chatBox').innerHTML='<div class="bubble ai">Olá! Escolha um idioma e fale comigo.</div>';setRobotSpeaking(false,'Conversa limpa. Pronto para continuar.')}
+          function setRobotSpeaking(on,text){document.getElementById('robotAvatar')?.classList.toggle('speaking',!!on);if(text)document.getElementById('aiSpeechBubble').textContent=text}
+          function stopAllRecognition(){try{lessonRec?.stop()}catch{}try{chatRec?.stop()}catch{}lessonListening=chatListening=false;document.getElementById('micBtn')?.classList.remove('listening');document.getElementById('aiMicBtn')?.classList.remove('listening')}
+          window.onNativeSpeechResult=function(mode,text){if(mode==='lesson'){lessonListening=false;document.getElementById('micBtn')?.classList.remove('listening');gradeLesson(text)}else if(mode==='chat'){chatListening=false;document.getElementById('aiMicBtn')?.classList.remove('listening');askAI(text)}};
+          window.onNativeSpeechError=function(mode,msg){if(mode==='lesson'){lessonListening=false;document.getElementById('micBtn')?.classList.remove('listening');setLessonStatus(msg||'Não consegui ouvir.','var(--err)')}else{chatListening=false;document.getElementById('aiMicBtn')?.classList.remove('listening');showToast(msg||'Não consegui ouvir')}};
+          let toastTimer;function showToast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>e.classList.remove('show'),2400)}
+          const saved=localStorage.getItem('falaLang');if(saved&&document.querySelector('#globalLang option[value="'+saved+'"]'))document.getElementById('globalLang').value=saved;updateStats();renderGame((GAME[lang()]||GAME['en-US'])[0]);
+          </script>
+          </body></html>
+          HTML
+
+      - name: Validate interface
+        shell: bash
+        run: |
+          set -euo pipefail
+          HTML=android/app/src/main/assets/index.html
+          grep -Fq 'function startAIGame' "$HTML"
+          grep -Fq 'function toggleSpeechRecognition' "$HTML"
+          grep -Fq 'window.onNativeSpeechResult' "$HTML"
+          grep -Fq "'ja-JP'" "$HTML"
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('android/app/src/main/assets/index.html')
-          s = p.read_text()
-
-          s = s.replace('https://i.imgur.com/your-uploaded-icon.png', 'app_icon.webp')
-          s = s.replace('https://i.imgur.com/your-avatar.png', 'app_icon.webp')
-
-          css = r'''
-          /* Fala+ AI Hub v1.4.0 */
-          :root{--hub-bg:#05070b;--hub-card:#0c1119;--hub-card-2:#111826;--hub-line:rgba(255,255,255,.08);--hub-blue:#2f80ff;--hub-blue2:#0e5eea;--hub-text:#f7f9fc;--hub-muted:#7f8ba3}
-          html,body{background:#05070b!important;color:var(--hub-text)!important}
-          body{background:radial-gradient(circle at 50% -8%,rgba(48,94,190,.32),transparent 34%),#05070b!important;display:flex!important;align-items:stretch!important}
-          .app-container{width:100%!important;max-width:430px!important;height:100vh!important;max-height:none!important;border-radius:0!important;border:none!important;background:linear-gradient(180deg,#06080d 0%,#05070b 100%)!important;box-shadow:none!important;padding-bottom:74px!important}
-          .screen{background:#05070b!important}.screen.active{display:flex!important}
-          header{padding:calc(14px + env(safe-area-inset-top)) 18px 12px!important;background:rgba(5,7,11,.94)!important;border-bottom:1px solid var(--hub-line)!important;backdrop-filter:blur(16px)}
-          .back-btn{background:#101620!important;border:1px solid var(--hub-line)!important;color:#fff!important}
-
-          .hub-home{padding:calc(14px + env(safe-area-inset-top)) 16px 18px;overflow-y:auto;flex:1}.hub-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}.hub-brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:1.15rem}.hub-brand img{width:30px;height:30px;border-radius:10px}.hub-more{width:36px;height:36px;border-radius:12px;border:1px solid var(--hub-line);background:#0d121b;color:#fff;font-size:1.1rem}
-          .hub-hero{position:relative;min-height:174px;border-radius:22px;padding:21px 19px;overflow:hidden;background:linear-gradient(135deg,#0b111a 0%,#0a1424 55%,#0d1c36 100%);border:1px solid rgba(78,134,255,.18);box-shadow:0 18px 40px rgba(0,0,0,.36);margin-bottom:14px}.hub-hero:after{content:"";position:absolute;width:180px;height:180px;right:-44px;top:16px;border-radius:50%;background:radial-gradient(circle,#3d82ff 0%,#1260e9 34%,rgba(18,96,233,.12) 70%,transparent 71%);filter:drop-shadow(0 0 25px rgba(47,128,255,.3))}.hub-robot{position:absolute;right:22px;top:37px;width:102px;height:102px;border-radius:50%;z-index:2;box-shadow:0 0 0 10px rgba(47,128,255,.08),0 0 38px rgba(47,128,255,.35);animation:hubFloat 3.2s ease-in-out infinite}.hub-hero h1{position:relative;z-index:3;font-size:1.55rem;max-width:210px;line-height:1.05;margin:0 0 7px}.hub-hero p{position:relative;z-index:3;color:#8d98ad;font-size:.78rem;max-width:210px;line-height:1.4}.hub-hero button{position:relative;z-index:3;margin-top:15px;border:1px solid rgba(255,255,255,.12);background:#0e131c;color:#fff;border-radius:999px;padding:9px 16px;font-weight:700}
-          @keyframes hubFloat{0%,100%{transform:translateY(0)}50%{transform:translateY(-7px)}}
-
-          .hub-section{margin-top:18px}.hub-section-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}.hub-section-head h2{font-size:1rem;margin:0}.hub-section-head span{font-size:.72rem;color:#7d89a0}
-          .hub-feature-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:10px}.hub-feature{border-radius:18px;padding:14px;background:linear-gradient(145deg,#0e1726,#0b111a);border:1px solid rgba(70,124,255,.18);min-height:112px;position:relative;overflow:hidden}.hub-feature.secondary{background:linear-gradient(145deg,#111728,#0b111a)}.hub-feature .ico{width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:1.35rem;background:linear-gradient(145deg,#1570ff,#154cb5);box-shadow:0 10px 24px rgba(34,100,230,.28);margin-bottom:12px}.hub-feature h3{font-size:.91rem;margin:0 0 3px}.hub-feature p{font-size:.68rem;color:#79859b;line-height:1.25}
-          .hub-shortcuts{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px}.hub-shortcut{text-align:center;color:#aab4c7;font-size:.65rem}.hub-shortcut button{width:48px;height:48px;border-radius:15px;border:1px solid var(--hub-line);background:#0d121a;color:#fff;font-size:1.15rem;display:grid;place-items:center;margin:0 auto 6px;box-shadow:0 8px 18px rgba(0,0,0,.25)}
-          .hub-tool-list{display:grid;grid-template-columns:1fr 1fr;gap:9px}.hub-tool{display:flex;align-items:center;gap:9px;border:1px solid var(--hub-line);background:#0b0f16;border-radius:15px;padding:11px}.hub-tool .tool-ico{width:35px;height:35px;border-radius:11px;display:grid;place-items:center;background:#111a28;color:#67a4ff}.hub-tool b{font-size:.78rem;display:block}.hub-tool span{font-size:.62rem;color:#6f7c92}
-
-          .language-selector-bar{margin:0!important;padding:9px 11px!important;border-radius:14px!important;background:#0b1017!important;border:1px solid var(--hub-line)!important}.language-selector-bar select{color:#66a4ff!important;background:#0b1017!important}
-          .modules-list{padding:12px 16px 92px!important;gap:10px!important}.module-card{border-radius:18px!important;background:#0b1017!important;border:1px solid var(--hub-line)!important;box-shadow:none!important}.module-card.ai-mode,.module-card.game-mode{background:linear-gradient(145deg,#0d1726,#0b1017)!important;border-color:rgba(47,128,255,.22)!important}.module-icon{background:#111a28!important;border-color:var(--hub-line)!important;border-radius:13px!important}.module-info span{color:#748197!important}
-
-          .lesson-content,.game-content{padding:22px 18px 96px!important;background:radial-gradient(circle at 50% 18%,rgba(47,128,255,.1),transparent 32%),#05070b!important}.scenario-tag{background:#0d1726!important;color:#67a4ff!important;border-color:rgba(47,128,255,.22)!important}.phrase-card{font-size:1.65rem!important}.translation{color:#8a96aa!important}.audio-btn{background:#0e1623!important;border-color:rgba(47,128,255,.2)!important;color:#67a4ff!important}.mic-btn{background:linear-gradient(135deg,#2f80ff,#0e5eea)!important;box-shadow:0 12px 30px rgba(30,102,235,.28)!important}.action-btn{background:linear-gradient(135deg,#2f80ff,#0e5eea)!important;border-radius:16px!important}.game-option-btn{background:#0c1119!important;border:1px solid var(--hub-line)!important;border-radius:15px!important}.game-option-btn:hover{border-color:#2f80ff!important;background:#0e1726!important}
-
-          .ai-motion-stage,.ai-stage{background:linear-gradient(180deg,#0a1423,#05070b)!important;border-bottom:1px solid var(--hub-line)!important;padding-top:22px!important}.ai-motion-avatar,.ai-robot-avatar{width:106px!important;height:106px!important;border:4px solid #2f80ff!important;box-shadow:0 0 0 10px rgba(47,128,255,.06),0 0 35px rgba(47,128,255,.3)!important}.ai-motion-status,.ai-speech-bubble{background:#0b1119!important;border:1px solid var(--hub-line)!important;color:#dce6f7!important;border-radius:16px!important}.chat-box{background:#05070b!important;padding-bottom:90px!important}.chat-bubble.ai{background:#0c1119!important;border-color:var(--hub-line)!important}.chat-bubble.user{background:linear-gradient(135deg,#2f80ff,#155ac7)!important}.mic-btn.ai-mic{background:linear-gradient(135deg,#2f80ff,#0e5eea)!important}
-
-          .hub-bottom-nav{position:absolute;left:0;right:0;bottom:0;height:72px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));display:grid;grid-template-columns:repeat(4,1fr);background:rgba(6,8,12,.97);border-top:1px solid var(--hub-line);backdrop-filter:blur(18px);z-index:50}.hub-nav-btn{border:0;background:transparent;color:#67748a;font-size:.62rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}.hub-nav-btn span:first-child{font-size:1.15rem}.hub-nav-btn.active{color:#67a4ff}
-          footer{padding-bottom:calc(84px + env(safe-area-inset-bottom))!important;background:#05070b!important;border-color:var(--hub-line)!important}
-          '''
-          s = s.replace('</style>', css + '\n</style>', 1)
-
-          script = r'''
-          <script>
-          (function(){
-            function call(name,args){ try{ if(typeof window[name]==='function') return window[name].apply(window,args||[]); }catch(e){} }
-            function activateNav(key){ document.querySelectorAll('.hub-nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.key===key)); }
-            function renderHub(){
-              const home=document.getElementById('homeScreen'); if(!home) return;
-              home.innerHTML=`<div class="hub-home">
-                <div class="hub-top"><div class="hub-brand"><img src="app_icon.webp">Fala+</div><button class="hub-more">•••</button></div>
-                <div class="hub-hero"><img src="app_icon.webp" class="hub-robot"><h1>Explore o poder da IA</h1><p>Pratique idiomas com voz, jogos e um assistente inteligente em tempo real.</p><button onclick="startAIChat()">Experimentar agora</button></div>
-                <div class="language-selector-bar"><span style="font-size:.76rem;color:#7f8ba3">🌍 Idioma</span><select id="globalLang" onchange="changeLanguage()"><option value="en-US">English</option><option value="es-ES">Español</option><option value="fr-FR">Français</option><option value="de-DE">Deutsch</option><option value="it-IT">Italiano</option><option value="ja-JP">日本語</option></select></div>
-                <div class="hub-section"><div class="hub-section-head"><h2>Ferramentas principais</h2><span>Fala+ AI</span></div><div class="hub-feature-grid">
-                  <div class="hub-feature" onclick="startAIChat()"><div class="ico">🤖</div><h3>Assistente IA</h3><p>Converse por voz e receba respostas instantâneas.</p></div>
-                  <div class="hub-feature secondary" onclick="startAIGame()"><div class="ico">🎮</div><h3>Jogos IA</h3><p>Quiz e desafios rápidos.</p></div>
-                </div></div>
-                <div class="hub-shortcuts"><div class="hub-shortcut"><button onclick="startModule(0)">👋</button>Frases</div><div class="hub-shortcut"><button onclick="startAIGame()">🎯</button>Quiz</div><div class="hub-shortcut"><button onclick="startAIChat()">🎤</button>Voz</div><div class="hub-shortcut"><button onclick="startModule(1)">🍔</button>Prática</div><div class="hub-shortcut"><button onclick="startAIChat()">💬</button>Chat</div></div>
-                <div class="hub-section"><div class="hub-section-head"><h2>Aprender agora</h2><span>Ver tudo</span></div><div class="hub-tool-list">
-                  <div class="hub-tool" onclick="startModule(0)"><div class="tool-ico">👋</div><div><b>Apresentações</b><span>Frases essenciais</span></div></div>
-                  <div class="hub-tool" onclick="startModule(1)"><div class="tool-ico">🍔</div><div><b>Restaurante</b><span>Vocabulário útil</span></div></div>
-                  <div class="hub-tool" onclick="startAIGame()"><div class="tool-ico">⚡</div><div><b>Desafio rápido</b><span>Ganhe XP</span></div></div>
-                  <div class="hub-tool" onclick="startAIChat()"><div class="tool-ico">🧠</div><div><b>IA ao vivo</b><span>Treino inteligente</span></div></div>
-                </div></div>
-              </div>`;
-            }
-            function addNav(){
-              const app=document.querySelector('.app-container'); if(!app||document.querySelector('.hub-bottom-nav')) return;
-              const nav=document.createElement('div'); nav.className='hub-bottom-nav'; nav.innerHTML=`<button class="hub-nav-btn active" data-key="home"><span>⌂</span><span>Início</span></button><button class="hub-nav-btn" data-key="learn"><span>▥</span><span>Aprender</span></button><button class="hub-nav-btn" data-key="game"><span>🎮</span><span>Jogos</span></button><button class="hub-nav-btn" data-key="ai"><span>🤖</span><span>IA</span></button>`;
-              nav.children[0].onclick=()=>{call('goToHome');activateNav('home')};
-              nav.children[1].onclick=()=>{call('startModule',[0]);activateNav('learn')};
-              nav.children[2].onclick=()=>{call('startAIGame');activateNav('game')};
-              nav.children[3].onclick=()=>{call('startAIChat');activateNav('ai')};
-              app.appendChild(nav);
-            }
-            const oldStartAI=window.startAIChat, oldStartGame=window.startAIGame, oldStartModule=window.startModule, oldHome=window.goToHome;
-            if(oldStartAI) window.startAIChat=function(){const r=oldStartAI.apply(this,arguments);activateNav('ai');return r};
-            if(oldStartGame) window.startAIGame=function(){const r=oldStartGame.apply(this,arguments);activateNav('game');return r};
-            if(oldStartModule) window.startModule=function(){const r=oldStartModule.apply(this,arguments);activateNav('learn');return r};
-            if(oldHome) window.goToHome=function(){const r=oldHome.apply(this,arguments);activateNav('home');return r};
-            renderHub(); addNav();
-          })();
-          </script>
-          '''
-          s = s.replace('</body>', script + '\n</body>', 1)
-          p.write_text(s)
+          import re
+          s=Path('android/app/src/main/assets/index.html').read_text()
+          scripts=re.findall(r'<script>(.*?)</script>',s,re.S)
+          Path('/tmp/app.js').write_text('\n'.join(scripts))
           PY
-          grep -Fq 'Fala+ AI Hub v1.4.0' android/app/src/main/assets/index.html
-          grep -Fq 'hub-bottom-nav' android/app/src/main/assets/index.html
-          grep -Fq 'Explore o poder da IA' android/app/src/main/assets/index.html
+          node --check /tmp/app.js
 
       - uses: actions/setup-java@v4
         with:
@@ -190,7 +194,7 @@ jobs:
             keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fala Mais, O=Fala Mais, C=BR"
           fi
 
-      - name: Build AI Hub APK
+      - name: Build APK
         working-directory: android
         run: |
           gradle assembleDebug --stacktrace \
@@ -214,14 +218,14 @@ jobs:
           badging=$("$aapt" dump badging "$APK")
           echo "$badging" | grep -F "sdkVersion:'21'"
           echo "$badging" | grep -F "targetSdkVersion:'35'"
-          echo "$badging" | grep -F "versionCode='8'"
-          echo "$badging" | grep -F "versionName='1.4.0'"
-          unzip -p "$APK" assets/index.html | grep -Fq 'Fala+ AI Hub v1.4.0'
+          echo "$badging" | grep -F "versionCode='9'"
+          echo "$badging" | grep -F "versionName='1.4.1'"
+          unzip -p "$APK" assets/index.html | grep -Fq 'function startAIGame'
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: fala-mais-ai-hub-v1.4.0
+          name: fala-mais-stable-v1.4.1
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
