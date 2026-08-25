@@ -4,7 +4,9 @@ Aplicativo Android de conversação em idiomas com aulas locais e professor de I
 
 O catálogo inclui 56 idiomas com busca, exemplos de pronúncia e conversação WebRTC. O backend usa por padrão o modelo gpt-realtime-2.1 com raciocínio `low`, respostas curtas e detecção rápida do fim da fala.
 
-A versão 1.9.0 do APK apresenta Lumi, uma professora de IA com avatar animado que conecta, ouve, pensa e responde visualmente. Ela responde perguntas de assuntos gerais, explica, traduz e ensina por voz com baixa latência, usa `https://fala-mais-api.onrender.com` como backend padrão e preserva as correções de acesso ao microfone. O usuário informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
+A versão 2.0.0 reformula o aplicativo com uma interface premium escura, esfera animada da Lumi, atalhos inteligentes e uma nova área Arcade. Ela traz cinco mini games jogáveis — Quiz relâmpago, Memória de palavras, Monte a frase, Escuta rápida e Verdadeiro ou falso — com pontuação e recordes salvos no aparelho.
+
+Lumi continua conectando, ouvindo, pensando e respondendo visualmente. Ela responde perguntas de assuntos gerais, explica, traduz e ensina por voz com baixa latência, usa `https://fala-mais-api.onrender.com` como backend padrão e preserva as correções de acesso ao microfone. O usuário informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
 
 ## APK Android
 
