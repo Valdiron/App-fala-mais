@@ -3,10 +3,16 @@ import { spawn } from "node:child_process";
 import net from "node:net";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { openAiFailureCode } from "./openai-errors.mjs";
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const appToken = "fala-mais-smoke-test-token";
 const allowedOrigin = "https://appassets.androidplatform.net";
+
+assert.equal(openAiFailureCode(429, "credit_balance_exhausted"), "OPENAI_CREDIT_EXHAUSTED");
+assert.equal(openAiFailureCode(429, "insufficient_quota"), "OPENAI_CREDIT_EXHAUSTED");
+assert.equal(openAiFailureCode(429, "rate_limit_exceeded"), "OPENAI_RATE_LIMIT");
+assert.equal(openAiFailureCode(401, "invalid_api_key"), "OPENAI_AUTH_ERROR");
 
 async function availablePort() {
   const probe = net.createServer();
@@ -62,11 +68,43 @@ try {
   const unconfiguredBody = await unconfiguredHealth.json();
   assert.equal(unconfiguredBody.ok, true);
   assert.equal(unconfiguredBody.ready, false);
+  assert.equal(unconfiguredBody.version, "1.2.2");
+  assert.equal(unconfiguredBody.model, "gpt-realtime-2.1-mini");
 
   const unconfiguredReady = await fetch(unconfiguredUrl + "/ready", { method: "POST" });
   assert.equal(unconfiguredReady.status, 401);
 } finally {
   await stopBackend(unconfiguredChild);
+}
+
+const invalidKeyPort = await availablePort();
+const invalidKeyUrl = "http://127.0.0.1:" + invalidKeyPort;
+const invalidKeyChild = spawn(process.execPath, ["server.mjs"], {
+  cwd: directory,
+  env: {
+    ...process.env,
+    PORT: String(invalidKeyPort),
+    OPENAI_API_KEY: "45000",
+    FALA_MAIS_APP_TOKEN: appToken,
+    ALLOWED_ORIGINS: "null," + allowedOrigin
+  },
+  stdio: ["ignore", "pipe", "pipe"]
+});
+
+try {
+  await waitForHealth(invalidKeyUrl, invalidKeyChild);
+  const invalidHealth = await fetch(invalidKeyUrl + "/health");
+  assert.equal(invalidHealth.status, 200);
+  assert.equal((await invalidHealth.json()).ready, false);
+
+  const invalidReady = await fetch(invalidKeyUrl + "/ready", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + appToken }
+  });
+  assert.equal(invalidReady.status, 503);
+  assert.equal((await invalidReady.json()).code, "OPENAI_KEY_INVALID");
+} finally {
+  await stopBackend(invalidKeyChild);
 }
 
 const port = await availablePort();
@@ -76,7 +114,7 @@ const child = spawn(process.execPath, ["server.mjs"], {
   env: {
     ...process.env,
     PORT: String(port),
-    OPENAI_API_KEY: "sk-test-not-used",
+    OPENAI_API_KEY: ["sk", "smoke", "test", "not", "used", "outside", "localhost"].join("-"),
     FALA_MAIS_APP_TOKEN: appToken,
     ALLOWED_ORIGINS: "null," + allowedOrigin
   },

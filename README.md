@@ -2,9 +2,11 @@
 
 Aplicativo Android de conversação em idiomas com aulas locais e professor de IA por voz ao vivo.
 
-O catálogo inclui 56 idiomas com busca, exemplos de pronúncia e conversação WebRTC. O backend usa por padrão o modelo gpt-realtime-2.1-mini, respostas curtas e detecção rápida do fim da fala.
+O catálogo inclui 56 idiomas com busca, exemplos de pronúncia e conversação WebRTC. O backend usa por padrão o modelo gpt-realtime-2.1-mini com raciocínio `low`, respostas curtas e detecção rápida do fim da fala.
 
-A versão 1.8.1 do APK mantém o design, a capa e o ícone oficiais do Fala+, responde automaticamente a cada fala concluída e usa `https://fala-mais-api.onrender.com` como backend padrão. Ela também corrige a permissão do microfone, gravação local, reconexão, mensagens de erro e cache de versões antigas. O usuário informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
+A versão 2.0.2 mantém a interface premium escura, a esfera animada da Lumi e os cinco mini games jogáveis — Quiz relâmpago, Memória de palavras, Monte a frase, Escuta rápida e Verdadeiro ou falso — com pontuação e recordes salvos no aparelho. Ela também controla o modo de comunicação e o foco de áudio nativamente no Android, diferencia saldo zerado de limite temporário e detecta uma `OPENAI_API_KEY` mal preenchida antes de abrir o microfone.
+
+Lumi continua conectando, ouvindo, pensando e respondendo visualmente. Ela responde perguntas de assuntos gerais, explica, traduz e ensina por voz com baixa latência, usa `https://fala-mais-api.onrender.com` como backend padrão e preserva as correções de acesso ao microfone. O usuário informa somente o `FALA_MAIS_APP_TOKEN` no Perfil; a chave da OpenAI permanece no servidor.
 
 ## APK Android
 
@@ -38,7 +40,7 @@ Durante a criação do Blueprint, o Render solicitará:
 - `OPENAI_API_KEY`: crie uma chave nova e informe somente no Render.
 - `FALA_MAIS_APP_TOKEN`: crie um token longo, guarde-o e use o mesmo valor no aplicativo.
 
-Depois do primeiro deploy, confirme que `https://fala-mais-api.onrender.com/health` retorna `"ok": true`. A mesma URL já está configurada como endereço padrão no APK.
+Depois do primeiro deploy, confirme que `https://fala-mais-api.onrender.com/health` retorna `"ok": true` e `"ready": true`. A mesma URL já está configurada como endereço padrão no APK. Valores como `45000` pertencem a `OPENAI_TIMEOUT_MS` e nunca devem ser usados em `OPENAI_API_KEY`.
 
 ## Configuração
 
