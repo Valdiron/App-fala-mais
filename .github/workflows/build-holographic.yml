@@ -1,0 +1,120 @@
+name: Build Fala+ Holographic Stable APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: build-fala-holographic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download validated stable APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/stable
+          gh run download 32875534871 -R Valdiron/App-fala-mais -n fala-mais-stable-v1.4.1 -D /tmp/stable
+          APK=$(find /tmp/stable -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          unzip -p /tmp/fala-base.apk assets/index.html > /tmp/index.html
+          test -s /tmp/index.html
+
+      - name: Apply holographic interface
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/index.html')
+          s=p.read_text()
+          css=r'''
+          /* Fala+ Holographic AI skin */
+          :root{--holo:#8b5cf6;--holo2:#3b82f6;--cyan:#22d3ee}
+          html,body{background:#070910!important}
+          .app{background:radial-gradient(circle at 50% 0,rgba(139,92,246,.30),transparent 32%),radial-gradient(circle at 88% 18%,rgba(34,211,238,.12),transparent 22%),#070910!important}
+          .hero{background:linear-gradient(145deg,rgba(255,255,255,.075),rgba(139,92,246,.09))!important;border-color:rgba(167,139,250,.25)!important;box-shadow:0 18px 50px rgba(0,0,0,.42),inset 0 1px rgba(255,255,255,.09)!important}
+          .hero:after{background:radial-gradient(circle,rgba(34,211,238,.44),rgba(59,130,246,.18) 45%,rgba(139,92,246,.08) 62%,transparent 72%)!important}
+          .hero img{width:110px!important;height:110px!important;border:3px solid var(--holo)!important;box-shadow:0 0 30px rgba(139,92,246,.72),0 0 72px rgba(34,211,238,.18)!important;animation:holoFloat 3.5s ease-in-out infinite!important}
+          .feature,.tool,.lang,.shortcut button,.bubble.ai,.ai-status{background:linear-gradient(145deg,rgba(255,255,255,.07),rgba(139,92,246,.035))!important;border-color:rgba(167,139,250,.18)!important}
+          .ico,.primary,.mic,.voice,.bubble.user{background:linear-gradient(135deg,var(--holo),var(--holo2))!important}
+          .avatar{width:110px!important;height:110px!important;border:3px solid var(--holo)!important;box-shadow:0 0 28px rgba(139,92,246,.68),0 0 60px rgba(34,211,238,.16)!important;animation:holoFloat 3.5s ease-in-out infinite!important}
+          .avatar.speaking{border-color:#22c55e!important;animation:holoFloat 3.5s ease-in-out infinite,holoGlow .5s alternate infinite!important}
+          .ai-stage{background:linear-gradient(180deg,rgba(139,92,246,.15),rgba(7,9,16,0))!important}
+          .nav{background:rgba(7,9,16,.97)!important;border-color:rgba(167,139,250,.14)!important}.nav button.active{color:#c4b5fd!important}
+          @keyframes holoFloat{0%,100%{transform:translateY(0) rotate(0) scale(1)}50%{transform:translateY(-8px) rotate(1.5deg) scale(1.02)}}
+          @keyframes holoGlow{from{box-shadow:0 0 16px rgba(34,197,94,.5)}to{box-shadow:0 0 38px rgba(34,197,94,.95)}}
+          '''
+          s=s.replace('</style>',css+'\n</style>',1)
+          s=s.replace('Explore o poder da IA','Assistente holográfico com IA')
+          s=s.replace('Pratique idiomas com voz, jogos e um assistente inteligente.','Pratique idiomas com voz, jogos, lições e um assistente holográfico.')
+          s=s.replace('Fala+ AI Hub v1.4.1','Fala+ Holographic AI • base estável 1.4.1')
+          s=s.replace('Assistente IA','Assistente Holográfico')
+          p.write_text(s)
+          PY
+          grep -Fq 'Fala+ Holographic AI skin' /tmp/index.html
+          grep -Fq 'startAIGame' /tmp/index.html
+          grep -Fq 'toggleAIChatSpeech' /tmp/index.html
+
+      - name: Repack APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/apkdir
+          mkdir -p /tmp/apkdir/assets
+          cp /tmp/fala-base.apk /tmp/fala-holo-unsigned.apk
+          cp /tmp/index.html /tmp/apkdir/assets/index.html
+          cd /tmp/apkdir
+          zip -q -u /tmp/fala-holo-unsigned.apk assets/index.html
+          cd /tmp
+          zip -q -d fala-holo-unsigned.apk 'META-INF/*' || true
+
+      - name: Restore stable signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [[ ! -s .signing/falamais.keystore ]]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Fala Mais, O=Fala Mais, C=BR"
+          fi
+
+      - name: Align sign and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+          zipalign=$(find "$sdk_root/build-tools" -type f -name zipalign -print | sort -V | tail -n 1)
+          apksigner=$(find "$sdk_root/build-tools" -type f -name apksigner -print | sort -V | tail -n 1)
+          "$zipalign" -f -p 4 /tmp/fala-holo-unsigned.apk /tmp/Fala-Mais-Holographic-Stable.apk
+          "$apksigner" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Holographic-Stable.apk
+          "$apksigner" verify --verbose --print-certs /tmp/Fala-Mais-Holographic-Stable.apk
+          unzip -tq /tmp/Fala-Mais-Holographic-Stable.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-Holographic-Stable.apk assets/index.html | grep -Fq 'Fala+ Holographic AI skin'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-holographic-stable
+          path: /tmp/Fala-Mais-Holographic-Stable.apk
+          if-no-files-found: error
+          retention-days: 14
