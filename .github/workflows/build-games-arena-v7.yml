@@ -1,0 +1,165 @@
+name: Build Fala Games Arena V7
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/build-games-arena-v7.yml']
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download latest UI-fixed APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/base
+          RUN_ID=$(gh run list -R Valdiron/App-fala-mais --workflow build-ui-fixed-v6.yml --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          test -n "$RUN_ID"
+          gh run download "$RUN_ID" -R Valdiron/App-fala-mais -n fala-mais-ui-fixed-v6 -D /tmp/base
+          APK=$(find /tmp/base -type f -name '*.apk' -print -quit)
+          test -s "$APK"
+          cp "$APK" /tmp/fala-base.apk
+          unzip -p "$APK" assets/index.html > /tmp/index.html
+
+      - name: Add 50+ mini-games to Games tab
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/index.html')
+          s=p.read_text(encoding='utf-8')
+          patch=r'''
+<style id="gamesArenaV7Css">
+#gameScreen{background:linear-gradient(180deg,rgba(245,158,11,.06),transparent 35%)}
+#gameScreen header{border-bottom:1px solid rgba(245,158,11,.25)}
+#gameContentContainer{padding:18px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;justify-content:flex-start!important;align-items:stretch!important}
+.game-arena-card{background:rgba(255,255,255,.05);border:1px solid rgba(245,158,11,.28);border-radius:18px;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.game-arena-top{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.game-arena-badge{font-size:.74rem;font-weight:700;color:#fbbf24;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.25);padding:6px 10px;border-radius:999px}
+.game-arena-xp{font-size:.75rem;color:#94a3b8}
+.game-arena-q{font-size:1.05rem;font-weight:700;line-height:1.45;color:#fff;margin-bottom:14px}
+.game-options-v7{display:grid;grid-template-columns:1fr;gap:10px}
+.game-option-v7{width:100%;min-height:48px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.11);border-radius:12px;color:#fff;padding:12px 14px;text-align:left;font-weight:650;cursor:pointer;transition:.2s}
+.game-option-v7:active{transform:scale(.99)}
+.game-option-v7.correct{border-color:#22c55e;background:rgba(34,197,94,.14)}
+.game-option-v7.wrong{border-color:#ef4444;background:rgba(239,68,68,.14)}
+.game-result-v7{margin-top:10px;padding:12px;border-radius:12px;font-weight:700;text-align:center}
+.game-result-v7.ok{color:#86efac;background:rgba(34,197,94,.10);border:1px solid rgba(34,197,94,.22)}
+.game-result-v7.no{color:#fca5a5;background:rgba(239,68,68,.10);border:1px solid rgba(239,68,68,.22)}
+.game-stats-v7{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:4px}.game-stat-v7{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:9px;text-align:center}.game-stat-v7 strong{display:block;font-size:1rem}.game-stat-v7 span{font-size:.65rem;color:#94a3b8}
+</style>
+<script id="gamesArenaV7Js">
+(function(){
+'use strict';
+const $=id=>document.getElementById(id);
+const base={
+'en-US':[
+['Tradução para “Good morning”',['Boa tarde','Bom dia','Boa noite'],1],['Complete: Thank ____ very much',['you','me','he'],0],['O que significa “Water”?',['Água','Fogo','Terra'],0],['Tradução para “How are you?”',['Quem é você?','Como vai você?','Onde estás?'],1],['Complete: Where is ___ airport?',['the','a','an'],0],['O que significa “Apple”?',['Maçã','Banana','Carro'],0],['Tradução para “I love programming”',['Eu odeio jogos','Eu amo programar','Eu estudo inglês'],1],['Complete: Open ___ door please',['the','at','on'],0],['O que significa “Book”?',['Livro','Caneta','Mesa'],0],['Tradução para “See you tomorrow”',['Até logo','Até amanhã','Boa noite'],1]],
+'es-ES':[['¿Qué significa “Buenos días”?',['Boa tarde','Bom dia','Boa noite'],1],['Completa: Por ________',['favor','gracias','hola'],0],['¿Qué significa “Agua”?',['Água','Comida','Fogo'],0],['Traducción de “Gracias”',['Por favor','Obrigado','Adeus'],1]],
+'fr-FR':[['Que signifie “Merci”?',['Olá','Obrigado','Adeus'],1],['Traduction de “Bonjour”',['Bom dia','Boa noite','Tchau'],0]],
+'de-DE':[['Was bedeutet “Guten Morgen”?',['Bom dia','Boa noite','Tchau'],0],['Bedeutung von “Danke”',['Por favor','Obrigado','Sim'],1]],
+'it-IT':[['Cosa significa “Buongiorno”?',['Boa tarde','Bom dia','Adeus'],1]],
+'ja-JP':[['O que significa “Arigatou”?',['Obrigado','Olá','Desculpa'],0]]
+};
+const templates=[
+(q,o,c)=>[q,o,c],
+(q,o,c)=>['⚡ Desafio rápido: '+q,o,c],
+(q,o,c)=>['🧠 Quiz de memória: '+q,o,c],
+(q,o,c)=>['🎯 Acerte em uma tentativa: '+q,o,c],
+(q,o,c)=>['🔥 Sequência XP: '+q,o,c],
+(q,o,c)=>['⏱️ Resposta relâmpago: '+q,o,c]
+];
+let gameNo=0,gameScore=0,streak=0,current=null,locked=false;
+function lang(){return $('globalLang')?.value||window.currentLang||'en-US'}
+function ensureScreen(){
+ let screen=$('gameScreen');
+ if(!screen){
+   screen=document.createElement('div');screen.id='gameScreen';screen.className='screen';
+   screen.innerHTML='<header><button class="back-btn" onclick="goToHome()">←</button><span id="gameHeaderTitle" style="font-weight:700;color:#f59e0b">🎮 Arena de Mini-Games (50+)</span><div style="width:36px"></div></header><div class="lesson-content" id="gameContentContainer"></div><footer><button class="action-btn" onclick="generateNewGameChallenge()" style="background:linear-gradient(135deg,#f59e0b,#d97706)">Próximo Mini-Jogo ⚡</button></footer>';
+   document.querySelector('.app-container')?.appendChild(screen);
+ }
+ return screen;
+}
+function pick(){const pool=base[lang()]||base['en-US'];const item=pool[Math.floor(Math.random()*pool.length)];const t=templates[gameNo%templates.length];return t(item[0],item[1],item[2])}
+window.startAIGame=function(){
+ const s=ensureScreen();document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));s.classList.add('active');gameNo=0;gameScore=0;streak=0;window.generateNewGameChallenge();
+};
+window.generateNewGameChallenge=function(){
+ const s=ensureScreen();const c=$('gameContentContainer');if(!c)return;locked=false;gameNo++;current=pick();
+ if($('gameHeaderTitle'))$('gameHeaderTitle').textContent='🎮 Mini-Game #'+gameNo+' • Arena 50+';
+ c.innerHTML='<div class="game-stats-v7"><div class="game-stat-v7"><strong>'+gameNo+'</strong><span>JOGO</span></div><div class="game-stat-v7"><strong>'+gameScore+'</strong><span>XP</span></div><div class="game-stat-v7"><strong>'+streak+'</strong><span>SEQUÊNCIA</span></div></div><div class="game-arena-card"><div class="game-arena-top"><span class="game-arena-badge">Desafio IA</span><span class="game-arena-xp">+15 XP</span></div><div class="game-arena-q"></div><div class="game-options-v7"></div><div id="gameResultV7"></div></div>';
+ c.querySelector('.game-arena-q').textContent=current[0];const box=c.querySelector('.game-options-v7');
+ current[1].forEach((opt,i)=>{const b=document.createElement('button');b.className='game-option-v7';b.textContent=opt;b.onclick=()=>window.checkGameAnswer(i,current[2]);box.appendChild(b)});
+};
+window.checkGameAnswer=function(selected,correct){
+ if(locked)return;locked=true;const btns=[...document.querySelectorAll('.game-option-v7')];btns.forEach((b,i)=>{if(i===correct)b.classList.add('correct');if(i===selected&&selected!==correct)b.classList.add('wrong');b.disabled=true});
+ const r=$('gameResultV7');if(selected===correct){gameScore+=15;streak++;if(r){r.className='game-result-v7 ok';r.textContent='🎉 Resposta correta! +15 XP';}}else{streak=0;if(r){r.className='game-result-v7 no';r.textContent='❌ Resposta incorreta. A correta ficou destacada.';}}
+ if(typeof window.score==='number'){window.score+=selected===correct?15:0;window.updateStats?.();}
+ };
+ const oldHome=window.goToHome;window.goToHome=function(){document.querySelectorAll('.screen').forEach(x=>x.classList.remove('active'));if(typeof oldHome==='function')return oldHome();$('homeScreen')?.classList.add('active')};
+ ensureScreen();
+})();
+</script>
+'''
+          if 'gamesArenaV7Js' not in s:
+              s=s.replace('</body>',patch+'\n</body>',1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          grep -Fq 'gamesArenaV7Js' /tmp/index.html
+          grep -Fq 'Arena 50+' /tmp/index.html
+          node - <<'NODE'
+          const fs=require('fs');const s=fs.readFileSync('/tmp/index.html','utf8');for(const m of s.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gi)) new Function(m[1]);console.log('JS OK');
+          NODE
+
+      - name: Repack APK
+        run: |
+          set -euo pipefail
+          cp /tmp/fala-base.apk /tmp/fala-games-unsigned.apk
+          mkdir -p /tmp/update/assets
+          cp /tmp/index.html /tmp/update/assets/index.html
+          cd /tmp/update && zip -q -u /tmp/fala-games-unsigned.apk assets/index.html
+          cd /tmp && zip -q -d fala-games-unsigned.apk 'META-INF/*' || true
+
+      - name: Restore signing key
+        uses: actions/cache@v4
+        with:
+          path: .signing/falamais.keystore
+          key: fala-mais-compatible-signing-v1
+
+      - name: Prepare signing key
+        run: |
+          set -euo pipefail
+          mkdir -p .signing
+          if [ ! -s .signing/falamais.keystore ]; then
+            keytool -genkeypair -noprompt -keystore .signing/falamais.keystore -storepass android -alias falamais -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname 'CN=Fala Mais, O=Fala Mais, C=BR'
+          fi
+
+      - name: Align sign and verify
+        run: |
+          set -euo pipefail
+          SDK=${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}
+          ZIPALIGN=$(find "$SDK/build-tools" -type f -name zipalign | sort -V | tail -n 1)
+          APKSIGNER=$(find "$SDK/build-tools" -type f -name apksigner | sort -V | tail -n 1)
+          "$ZIPALIGN" -f -p 4 /tmp/fala-games-unsigned.apk /tmp/Fala-Mais-Games-Arena-V7.apk
+          "$APKSIGNER" sign --ks "$GITHUB_WORKSPACE/.signing/falamais.keystore" --ks-pass pass:android --key-pass pass:android --ks-key-alias falamais /tmp/Fala-Mais-Games-Arena-V7.apk
+          "$APKSIGNER" verify --verbose /tmp/Fala-Mais-Games-Arena-V7.apk
+          unzip -tq /tmp/Fala-Mais-Games-Arena-V7.apk >/dev/null
+          unzip -p /tmp/Fala-Mais-Games-Arena-V7.apk assets/index.html | grep -Fq 'gamesArenaV7Js'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: fala-mais-games-arena-v7
+          path: /tmp/Fala-Mais-Games-Arena-V7.apk
+          if-no-files-found: error
+          retention-days: 14
