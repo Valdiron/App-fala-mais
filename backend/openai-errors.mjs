@@ -1,5 +1,6 @@
 const creditFailureCodes = new Set([
   "billing_hard_limit_reached",
+  "billing_not_active",
   "credit_balance_exhausted",
   "insufficient_quota"
 ]);
