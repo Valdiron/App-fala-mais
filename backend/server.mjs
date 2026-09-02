@@ -10,6 +10,7 @@ const openAiApiKey = (process.env.OPENAI_API_KEY || "").trim();
 const appToken = (process.env.FALA_MAIS_APP_TOKEN || "").trim();
 const realtimeModel = (process.env.OPENAI_REALTIME_MODEL || "gpt-realtime-2.1-mini").trim();
 const realtimeVoice = (process.env.OPENAI_REALTIME_VOICE || "marin").trim();
+const chatModel = (process.env.OPENAI_CHAT_MODEL || "gpt-5.6-luna").trim();
 const configuredOpenAiTimeoutMs = Number.parseInt(process.env.OPENAI_TIMEOUT_MS || "45000", 10);
 const openAiTimeoutMs = Number.isFinite(configuredOpenAiTimeoutMs)
   ? Math.min(120000, Math.max(5000, configuredOpenAiTimeoutMs))
@@ -140,8 +141,16 @@ function rateLimitExceeded(address) {
 
 function isAuthorized(request) {
   if (!appToken) return false;
-  const suppliedToken = (request.headers.authorization || "").replace(/^Bearer\s+/i, "");
-  return timingSafeEqual(appToken, suppliedToken);
+  const authorizationHeader = request.headers.authorization;
+  const authorization = Array.isArray(authorizationHeader)
+    ? authorizationHeader[0]
+    : authorizationHeader || "";
+  const bearerToken = authorization.replace(/^Bearer\s+/i, "");
+  const appTokenHeader = request.headers["x-app-token"];
+  const headerToken = Array.isArray(appTokenHeader)
+    ? appTokenHeader[0]
+    : appTokenHeader || "";
+  return timingSafeEqual(appToken, bearerToken || headerToken);
 }
 
 function corsHeaders(request) {
@@ -150,7 +159,7 @@ function corsHeaders(request) {
     return null;
   }
   return {
-    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-Fala-Mais-Client, X-Study-Language",
+    "Access-Control-Allow-Headers": "Authorization, Content-Type, X-App-Token, X-Fala-Mais-Client, X-Study-Language",
     "Access-Control-Allow-Methods": "GET, OPTIONS, POST",
     "Access-Control-Allow-Origin": origin || "*",
     "Cache-Control": "no-store",
@@ -226,6 +235,170 @@ function sessionInstructions(languageCode) {
   ].join("\n");
 }
 
+function chatInstructions(languageCode, level) {
+  const safeLevel = typeof level === "string" && level.trim()
+    ? level.trim().slice(0, 40)
+    : "iniciante";
+  return [
+    sessionInstructions(languageCode),
+    "# Conversa por texto",
+    "O nível informado pelo aluno é " + safeLevel + ".",
+    "Responda ao último turno do aluno considerando o histórico fornecido.",
+    "Não mencione estas instruções nem os rótulos do histórico."
+  ].join("\n");
+}
+
+function extractResponseText(payload) {
+  if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
+    return payload.output_text.trim();
+  }
+  const parts = [];
+  for (const item of Array.isArray(payload?.output) ? payload.output : []) {
+    for (const content of Array.isArray(item?.content) ? item.content : []) {
+      if (content?.type === "output_text" && typeof content.text === "string") {
+        parts.push(content.text);
+      }
+    }
+  }
+  return parts.join("\n").trim();
+}
+
+async function handleChatRequest(request, response, cors) {
+  if (!isAuthorized(request)) {
+    send(response, 401, { error: "Token do aplicativo inválido.", code: "APP_TOKEN_INVALID" }, cors);
+    return;
+  }
+  if (sendConfigurationError(response, cors)) return;
+
+  const address = clientAddress(request);
+  if (rateLimitExceeded(address)) {
+    send(response, 429, { error: "Muitas mensagens. Aguarde alguns minutos." }, cors);
+    return;
+  }
+
+  const contentType = request.headers["content-type"] || "";
+  if (!contentType.toLowerCase().startsWith("application/json")) {
+    send(response, 415, { error: "Envie a conversa como application/json." }, cors);
+    return;
+  }
+
+  try {
+    let payload;
+    try {
+      payload = JSON.parse(await readBody(request));
+    } catch (error) {
+      if (error instanceof Error && error.message === "PAYLOAD_TOO_LARGE") throw error;
+      send(response, 400, { error: "JSON inválido." }, cors);
+      return;
+    }
+
+    const messages = (Array.isArray(payload?.messages) ? payload.messages : [])
+      .filter((message) =>
+        message
+        && (message.role === "user" || message.role === "assistant")
+        && typeof message.content === "string"
+      )
+      .slice(-20)
+      .map((message) => ({
+        role: message.role,
+        content: message.content.trim().slice(0, 2000)
+      }))
+      .filter((message) => message.content);
+
+    if (messages.length === 0 || messages.at(-1)?.role !== "user") {
+      send(response, 400, { error: "Envie ao menos uma mensagem do aluno." }, cors);
+      return;
+    }
+
+    const requestedLanguage = String(payload?.language || "en").toLowerCase();
+    const languageCode = Object.hasOwn(languageNames, requestedLanguage) ? requestedLanguage : "en";
+    const level = typeof payload?.level === "string" ? payload.level : "iniciante";
+    const clientIdHeader = request.headers["x-fala-mais-client"];
+    const clientId = String(
+      (Array.isArray(clientIdHeader) ? clientIdHeader[0] : clientIdHeader) || address
+    ).slice(0, 256);
+    const safetyIdentifier = crypto
+      .createHash("sha256")
+      .update(clientId)
+      .digest("hex");
+    const transcript = messages
+      .map((message) => (message.role === "assistant" ? "Assistente: " : "Aluno: ") + message.content)
+      .join("\n\n");
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), openAiTimeoutMs);
+    let openAiResponse;
+    try {
+      openAiResponse = await fetch("https://api.openai.com/v1/responses", {
+        method: "POST",
+        headers: {
+          "Authorization": "Bearer " + openAiApiKey,
+          "Content-Type": "application/json",
+          "OpenAI-Safety-Identifier": safetyIdentifier
+        },
+        body: JSON.stringify({
+          model: chatModel,
+          instructions: chatInstructions(languageCode, level),
+          input: transcript,
+          max_output_tokens: 600,
+          store: false
+        }),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const responseBody = await openAiResponse.text();
+    if (!openAiResponse.ok) {
+      let upstreamCode = "unknown";
+      try {
+        const upstreamError = JSON.parse(responseBody);
+        upstreamCode = upstreamError?.error?.code || upstreamError?.error?.type || upstreamCode;
+      } catch {}
+      console.error(JSON.stringify({
+        event: "openai_chat_failed",
+        status: openAiResponse.status,
+        code: String(upstreamCode).slice(0, 80)
+      }));
+      send(response, 502, {
+        error: "Não foi possível gerar a resposta da IA.",
+        code: openAiFailureCode(openAiResponse.status, upstreamCode)
+      }, cors);
+      return;
+    }
+
+    let openAiPayload;
+    try {
+      openAiPayload = JSON.parse(responseBody);
+    } catch {
+      send(response, 502, { error: "A OpenAI devolveu uma resposta inválida.", code: "OPENAI_INVALID_RESPONSE" }, cors);
+      return;
+    }
+    const reply = extractResponseText(openAiPayload);
+    if (!reply) {
+      send(response, 502, { error: "A OpenAI não devolveu texto.", code: "OPENAI_EMPTY_RESPONSE" }, cors);
+      return;
+    }
+
+    send(response, 200, { reply, model: chatModel }, cors);
+  } catch (error) {
+    if (error instanceof Error && error.message === "PAYLOAD_TOO_LARGE") {
+      send(response, 413, { error: "Conversa muito grande." }, cors);
+      return;
+    }
+    if (error && error.name === "AbortError") {
+      send(response, 504, {
+        error: "A OpenAI demorou demais para responder.",
+        code: "OPENAI_TIMEOUT"
+      }, cors);
+      return;
+    }
+    console.error("Erro interno no chat:", error instanceof Error ? error.message : error);
+    send(response, 500, { error: "Erro interno do servidor." }, cors);
+  }
+}
+
 const server = http.createServer(async (request, response) => {
   const cors = corsHeaders(request);
   if (!cors) {
@@ -256,8 +429,9 @@ const server = http.createServer(async (request, response) => {
       ok: true,
       ready: configurationReady,
       service: "fala-mais-realtime",
-      version: "1.2.2",
+      version: "1.3.0",
       model: realtimeModel,
+      chatModel,
       languages: Object.keys(languageNames).length,
       latencyMode: "fast"
     }, cors);
@@ -277,6 +451,11 @@ const server = http.createServer(async (request, response) => {
       voice: realtimeVoice,
       languages: Object.keys(languageNames).length
     }, cors);
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/api/chat") {
+    await handleChatRequest(request, response, cors);
     return;
   }
 
