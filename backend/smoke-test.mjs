@@ -68,8 +68,9 @@ try {
   const unconfiguredBody = await unconfiguredHealth.json();
   assert.equal(unconfiguredBody.ok, true);
   assert.equal(unconfiguredBody.ready, false);
-  assert.equal(unconfiguredBody.version, "1.2.2");
+  assert.equal(unconfiguredBody.version, "1.3.0");
   assert.equal(unconfiguredBody.model, "gpt-realtime-2.1-mini");
+  assert.equal(unconfiguredBody.chatModel, "gpt-5.6-luna");
 
   const unconfiguredReady = await fetch(unconfiguredUrl + "/ready", { method: "POST" });
   assert.equal(unconfiguredReady.status, 401);
@@ -143,6 +144,34 @@ try {
   assert.equal(ready.status, 200);
   assert.equal((await ready.json()).ok, true);
 
+  const readyWithAppToken = await fetch(baseUrl + "/ready", {
+    method: "POST",
+    headers: { "X-App-Token": appToken }
+  });
+  assert.equal(readyWithAppToken.status, 200);
+  assert.equal((await readyWithAppToken.json()).ok, true);
+
+  const unauthorizedChat = await fetch(baseUrl + "/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ messages: [{ role: "user", content: "Olá" }] })
+  });
+  assert.equal(unauthorizedChat.status, 401);
+
+  const invalidChatJson = await fetch(baseUrl + "/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-App-Token": appToken },
+    body: "{"
+  });
+  assert.equal(invalidChatJson.status, 400);
+
+  const wrongChatContentType = await fetch(baseUrl + "/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "text/plain", "X-App-Token": appToken },
+    body: "Olá"
+  });
+  assert.equal(wrongChatContentType.status, 415);
+
   const wrongContentType = await fetch(baseUrl + "/session", {
     method: "POST",
     headers: { Authorization: "Bearer " + appToken, "Content-Type": "text/plain" },
@@ -150,11 +179,16 @@ try {
   });
   assert.equal(wrongContentType.status, 415);
 
-  const preflight = await fetch(baseUrl + "/session", {
+  const preflight = await fetch(baseUrl + "/api/chat", {
     method: "OPTIONS",
-    headers: { Origin: allowedOrigin }
+    headers: {
+      Origin: allowedOrigin,
+      "Access-Control-Request-Method": "POST",
+      "Access-Control-Request-Headers": "content-type,x-app-token"
+    }
   });
   assert.equal(preflight.status, 204);
+  assert.match(preflight.headers.get("access-control-allow-headers") || "", /X-App-Token/i);
 
   const forbiddenOrigin = await fetch(baseUrl + "/health", {
     headers: { Origin: "https://example.invalid" }
