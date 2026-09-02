@@ -9,6 +9,7 @@ const directory = path.dirname(fileURLToPath(import.meta.url));
 const appToken = "fala-mais-smoke-test-token";
 const allowedOrigin = "https://appassets.androidplatform.net";
 
+assert.equal(openAiFailureCode(429, "billing_not_active"), "OPENAI_CREDIT_EXHAUSTED");
 assert.equal(openAiFailureCode(429, "credit_balance_exhausted"), "OPENAI_CREDIT_EXHAUSTED");
 assert.equal(openAiFailureCode(429, "insufficient_quota"), "OPENAI_CREDIT_EXHAUSTED");
 assert.equal(openAiFailureCode(429, "rate_limit_exceeded"), "OPENAI_RATE_LIMIT");
